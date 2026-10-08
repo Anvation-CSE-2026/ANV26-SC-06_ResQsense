@@ -2146,6 +2146,36 @@ function RescueLoginPage({ onLoginSuccess, onBackToCitizen }) {
               </div>
             )}
 
+            <button
+              type="button"
+              className="btn-chat-primary"
+              style={{
+                width: "100%",
+                padding: "11px",
+                marginBottom: "12px",
+                background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                fontWeight: "700",
+                fontSize: "13.5px",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px"
+              }}
+              onClick={() => {
+                onLoginSuccess({
+                  id: "RESCUE-DEMO",
+                  name: "Captain Dev Sharma",
+                  email: "responder@relief.org",
+                  role: "rescue",
+                  agency: "Rapid Relief Foundation",
+                  badgeId: "SQ-101"
+                });
+              }}
+            >
+              ⚡ 1-Click Instant Rescue Team Access (Demo)
+            </button>
+
             <button type="submit" className="btn-auth-submit" disabled={loading}>
               {loading ? "Authenticating..." : isRegister ? "Register & Enter Rescue Console" : "Sign In & Unlock Rescue Dashboard"}
             </button>
@@ -2377,6 +2407,36 @@ function AdminLoginPage({ onLoginSuccess, onBackToCitizen }) {
                 />
               </div>
             )}
+
+            <button
+              type="button"
+              className="btn-chat-primary"
+              style={{
+                width: "100%",
+                padding: "11px",
+                marginBottom: "12px",
+                background: "linear-gradient(135deg, #e11d48 0%, #be123c 100%)",
+                fontWeight: "700",
+                fontSize: "13.5px",
+                border: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "8px"
+              }}
+              onClick={() => {
+                onLoginSuccess({
+                  id: "ADM-DEMO",
+                  name: "Director Vikram Sen",
+                  email: "admin@disastercontrol.gov",
+                  role: "admin",
+                  agency: "State Disaster Management Authority",
+                  badgeId: "ADM-HQ-01"
+                });
+              }}
+            >
+              ⚡ 1-Click Instant State Command Access (Demo)
+            </button>
 
             <button type="submit" className="btn-auth-submit" disabled={loading}>
               {loading ? "Authenticating..." : isRegister ? "Register & Enter Command Center" : "Sign In & Unlock Admin Console"}
