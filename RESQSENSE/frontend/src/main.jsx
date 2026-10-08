@@ -315,8 +315,16 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
         </button>
         <button
           className={`role-tab-btn ${role === "admin" ? "active" : ""}`}
-          onClick={() => { setRole("admin"); setActive?.("Dashboard"); }}
-          title={isAdminAuth ? "Authorized Command Console" : "Admin Command Login Required"}
+          onClick={() => {
+            if (adminUser) {
+              setRole("citizen");
+              setActive?.("Dashboard");
+            } else {
+              setRole("admin");
+              setActive?.("Dashboard");
+            }
+          }}
+          title={isAdminAuth ? "Admin Control (Redirects to Citizen)" : "Admin Command Login Required"}
         >
           <Radio size={14} /> Admin Control {!isAdminAuth && <Lock size={12} style={{ opacity: 0.65, marginLeft: 2 }} />}
         </button>
@@ -1137,6 +1145,7 @@ function RescueDashboard({ active, incidents, teams, onSelectIncident, onAssignT
         onSelectIncident={onSelectIncident}
         onAssignTeam={onAssignTeam}
         onRefresh={onRefreshData}
+        hideAssignedSquad={true}
       />
     );
   }
@@ -1179,6 +1188,7 @@ function RescueDashboard({ active, incidents, teams, onSelectIncident, onAssignT
       onRefresh={onRefreshData}
       LiveMapComponent={LiveMap}
       demoCenter={demoCenter}
+      hideAssignedSquad={true}
     />
   );
 }
@@ -2087,7 +2097,7 @@ function App() {
           setRole("rescue");
         } else if (profile.role === "admin") {
           setAdminUser(profile);
-          setRole("admin");
+          setRole("citizen");
         }
       }
     });
@@ -2102,6 +2112,7 @@ function App() {
         } else if (profile.role === "admin") {
           setAdminUser(profile);
           localStorage.setItem("resqsense_admin_user", JSON.stringify(profile));
+          setRole("citizen");
         }
       } else if (event === "SIGNED_OUT") {
         setRescueUser(null);
@@ -2131,7 +2142,10 @@ function App() {
 
   useEffect(() => {
     setActive("Dashboard");
-  }, [role]);
+    if (role === "admin" && adminUser) {
+      setRole("citizen");
+    }
+  }, [role, adminUser]);
 
   const handleSignOut = async (signoutRole) => {
     if (isSupabaseConfigured) {
@@ -2158,7 +2172,9 @@ function App() {
   const handleAdminLoginSuccess = (user) => {
     localStorage.setItem("resqsense_admin_user", JSON.stringify(user));
     setAdminUser(user);
-    setRole("admin");
+    // Admin section is disabled: whenever user logs in as admin, redirect to citizen section
+    setRole("citizen");
+    setActive("Dashboard");
   };
 
   const handleSOSSubmit = async (triageResult) => {
@@ -2277,14 +2293,14 @@ function App() {
               incidents={incidents}
               teams={teams}
               onSelectIncident={setSelectedIncident}
-              onAssignTeam={handleAssignTeam}
+              onAssignTeam={null}
               onRefreshData={fetchData}
             />
           </div>
         )
       )}
 
-      {/* Admin View: Login page first if not logged in, then Admin Command Center */}
+      {/* Admin View: Login page first if not logged in; when logged in, redirects to Citizen section */}
       {role === "admin" && (
         !adminUser ? (
           <AdminLoginPage
@@ -2292,16 +2308,18 @@ function App() {
             onBackToCitizen={() => { setRole("citizen"); setActive("Dashboard"); }}
           />
         ) : (
-          <div className="app-layout">
-            <Sidebar role="admin" active={active} setActive={setActive} />
-            <AdminDashboard
-              active={active}
-              incidents={incidents}
-              teams={teams}
-              onSelectIncident={setSelectedIncident}
-              onAssignTeam={handleAssignTeam}
-              onRefreshData={fetchData}
-            />
+          <div style={{ minHeight: "75vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px", textAlign: "center" }}>
+            <div style={{ fontSize: "48px", marginBottom: "16px" }}>🔒</div>
+            <h2 style={{ color: "#0f172a", marginBottom: "8px" }}>Admin Section is Restricted</h2>
+            <p style={{ color: "#64748b", maxWidth: "420px", marginBottom: "24px", lineHeight: "1.6" }}>
+              Administrator command access is restricted. Redirecting to the Citizen (Public) response section...
+            </p>
+            <button
+              className="btn-chat-primary"
+              onClick={() => { setRole("citizen"); setActive("Dashboard"); }}
+            >
+              Continue to Citizen Section
+            </button>
           </div>
         )
       )}
@@ -2315,19 +2333,21 @@ function App() {
         onSubmit={handleDirectSOSSubmit}
       />
 
-      {/* Chatbot — AI triage assistant, corner floating button */}
-      <Chatbot
-        gps={gps}
-        onSOS={handleSOSSubmit}
-        open={chatOpen}
-        setOpen={setChatOpen}
-      />
+      {/* Chatbot — AI triage assistant, corner floating button — Citizen view ONLY */}
+      {role === "citizen" && (
+        <Chatbot
+          gps={gps}
+          onSOS={handleSOSSubmit}
+          open={chatOpen}
+          setOpen={setChatOpen}
+        />
+      )}
 
       <IncidentDetailDrawer
         incident={selectedIncident}
         onClose={() => setSelectedIncident(null)}
         teams={teams}
-        onAssignTeam={handleAssignTeam}
+        onAssignTeam={role === "rescue" ? null : handleAssignTeam}
       />
 
       <footer className="app-footer">

@@ -38,7 +38,8 @@ export function DashboardOverview({
   onAssignTeam,
   onRefresh,
   LiveMapComponent,
-  demoCenter
+  demoCenter,
+  hideAssignedSquad
 }) {
   const [stats, setStats] = useState(null);
   const [selectedIncidentForAssign, setSelectedIncidentForAssign] = useState(null);
@@ -154,7 +155,7 @@ export function DashboardOverview({
                   <th>ID</th>
                   <th>Hazard</th>
                   <th>Score</th>
-                  <th>Assigned Squad</th>
+                  {!hideAssignedSquad && <th>Assigned Squad</th>}
                   <th>Action</th>
                 </tr>
               </thead>
@@ -164,15 +165,23 @@ export function DashboardOverview({
                     <td><b>{inc.id}</b></td>
                     <td>{inc.type}</td>
                     <td><span className="priority-tag high">{inc.priority}</span></td>
+                    {!hideAssignedSquad && (
+                      <td>
+                        <span style={{ fontSize: "12px", color: inc.assignedTeam ? "#059669" : "#64748b" }}>
+                          {inc.assignedTeam ? `Team ${inc.assignedTeam}` : "Unassigned"}
+                        </span>
+                      </td>
+                    )}
                     <td>
-                      <span style={{ fontSize: "12px", color: inc.assignedTeam ? "#059669" : "#64748b" }}>
-                        {inc.assignedTeam ? `Team ${inc.assignedTeam}` : "Unassigned"}
-                      </span>
-                    </td>
-                    <td>
-                      <button className="btn-assign-primary" onClick={() => setSelectedIncidentForAssign(inc)}>
-                        Assign
-                      </button>
+                      {hideAssignedSquad ? (
+                        <button className="btn-assign-primary" onClick={() => onSelectIncident(inc)}>
+                          Inspect
+                        </button>
+                      ) : (
+                        <button className="btn-assign-primary" onClick={() => setSelectedIncidentForAssign(inc)}>
+                          Assign
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -207,7 +216,7 @@ export function DashboardOverview({
         </div>
       </div>
 
-      {selectedIncidentForAssign && (
+      {!hideAssignedSquad && selectedIncidentForAssign && (
         <div className="detail-drawer">
           <div className="drawer-header">
             <h3>Assign Responder Squad</h3>
@@ -251,7 +260,7 @@ export function DashboardOverview({
 // ============================================================================
 // 2. INCIDENT QUEUE DASHBOARD
 // ============================================================================
-export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onAssignTeam, onRefresh }) {
+export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onAssignTeam, onRefresh, hideAssignedSquad }) {
   const [search, setSearch] = useState("");
   const [filterType, setFilterType] = useState("ALL");
   const [filterStatus, setFilterStatus] = useState("ALL");
@@ -326,9 +335,17 @@ export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onA
     <main className="main-viewport">
       <div className="page-header-row">
         <div>
-          <span className="page-eyebrow">Triage & Queue Command</span>
-          <h2>Incident Dispatch & Operations Queue</h2>
-          <p>Real-time queue of all emergency SOS events, field reports, and triage priorities.</p>
+          <span className="page-eyebrow">
+            {hideAssignedSquad ? "Rescue Team Operations" : "Triage & Queue Command"}
+          </span>
+          <h2>
+            {hideAssignedSquad ? "Field Incident Assignments Queue" : "Incident Dispatch & Operations Queue"}
+          </h2>
+          <p>
+            {hideAssignedSquad
+              ? "Operational queue of active emergency incidents and priority field missions."
+              : "Real-time queue of all emergency SOS events, field reports, and triage priorities."}
+          </p>
         </div>
         <div className="header-right-btns">
           <button className="btn-chat-primary" onClick={() => setShowCreateModal(true)}>
@@ -389,7 +406,7 @@ export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onA
                 <th>Hazard & Urgency</th>
                 <th>Priority Score</th>
                 <th>Affected People</th>
-                <th>Assigned Squad</th>
+                {!hideAssignedSquad && <th>Assigned Squad</th>}
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -428,23 +445,25 @@ export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onA
                     </span>
                   </td>
                   <td><b>{inc.people || 1}</b> people</td>
-                  <td>
-                    {inc.assignedTeam ? (
-                      <span style={{ color: "#059669", fontWeight: "600", fontSize: "13px" }}>
-                        {teams.find(t => t.id === inc.assignedTeam)?.name || `Team ${inc.assignedTeam}`}
-                      </span>
-                    ) : (
-                      <button
-                        className="btn-assign-primary"
-                        onClick={() => {
-                          setAssignModalIncident(inc);
-                          setChosenTeamId(teams[0]?.id || "");
-                        }}
-                      >
-                        + Assign Squad
-                      </button>
-                    )}
-                  </td>
+                  {!hideAssignedSquad && (
+                    <td>
+                      {inc.assignedTeam ? (
+                        <span style={{ color: "#059669", fontWeight: "600", fontSize: "13px" }}>
+                          {teams.find(t => t.id === inc.assignedTeam)?.name || `Team ${inc.assignedTeam}`}
+                        </span>
+                      ) : (
+                        <button
+                          className="btn-assign-primary"
+                          onClick={() => {
+                            setAssignModalIncident(inc);
+                            setChosenTeamId(teams[0]?.id || "");
+                          }}
+                        >
+                          + Assign Squad
+                        </button>
+                      )}
+                    </td>
+                  )}
                   <td>
                     <select
                       value={inc.status || "REPORTED"}
@@ -527,7 +546,7 @@ export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onA
       )}
 
       {/* Modal: Quick Assign */}
-      {assignModalIncident && (
+      {!hideAssignedSquad && assignModalIncident && (
         <div className="detail-drawer">
           <div className="drawer-header">
             <h3>Dispatch Squad to {assignModalIncident.id}</h3>
