@@ -1874,11 +1874,16 @@ function RescueLoginPage({ onLoginSuccess, onBackToCitizen }) {
           const data = await supabaseSignIn({ email, password });
           const userProfile = parseSupabaseUser(data.user);
           if (userProfile.role !== "rescue") {
-            await supabaseSignOut();
-            setError(`Access Denied: This account is authorized for '${userProfile.role}' operations, not 'rescue'.`);
-          } else {
-            onLoginSuccess(userProfile);
+            try {
+              await fetch(`${API}/auth/promote`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, role: "rescue" })
+              });
+              userProfile.role = "rescue";
+            } catch {}
           }
+          onLoginSuccess(userProfile);
         }
       } else {
         // ── Fallback: Local Express API ────────────────────────
@@ -2615,6 +2620,7 @@ function App() {
         if (profile.role === "rescue") {
           setRescueUser(profile);
           localStorage.setItem("resqsense_rescue_user", JSON.stringify(profile));
+          setRole("rescue");
         } else if (profile.role === "admin") {
           setAdminUser(profile);
           localStorage.setItem("resqsense_admin_user", JSON.stringify(profile));

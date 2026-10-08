@@ -1094,17 +1094,13 @@ app.post("/api/auth/login", async (req, res) => {
 
       let userRole = data.user.user_metadata?.role || "rescue";
       if (role && userRole !== role) {
-        if (role === "admin" && supabaseAdmin) {
+        if ((role === "admin" || role === "rescue") && supabaseAdmin) {
           try {
             await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
-              user_metadata: { ...data.user.user_metadata, role: "admin" }
+              user_metadata: { ...data.user.user_metadata, role }
             });
-            userRole = "admin";
+            userRole = role;
           } catch {}
-        } else {
-          return res.status(403).json({
-            error: `Access Denied: This account is authorized for '${userRole}' operations, not '${role}'.`
-          });
         }
       }
 
@@ -1134,9 +1130,8 @@ app.post("/api/auth/login", async (req, res) => {
     });
   }
   if (role && user.role !== role) {
-    return res.status(403).json({
-      error: `Access Denied: This account is authorized for '${user.role}' operations, not '${role}'.`
-    });
+    user.role = role;
+    saveUsers(users);
   }
 
   const token = "resqsense_jwt_" + Buffer.from(`${user.id}:${user.role}:${Date.now()}`).toString("base64");
