@@ -481,7 +481,7 @@ app.post("/api/twilio/broadcast", async (req, res) => {
           sid: data.sid,
           status: data.status || "sent",
           channel,
-          to: toNumber,
+          to: formattedPhone,
           teamName,
           incidentId,
           timestamp: new Date().toISOString()
