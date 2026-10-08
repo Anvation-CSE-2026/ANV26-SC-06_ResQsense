@@ -1,4 +1,4 @@
-# RESQSENSE - Smart Disaster Response & Coordination Platform
+# RESQSENSE _ Smart Disaster Response & Coordination Platform
 
 A hackathon-ready global disaster response MVP connecting Citizens, Rescue Teams (NGO/Government), and Admin Control Rooms.
 
