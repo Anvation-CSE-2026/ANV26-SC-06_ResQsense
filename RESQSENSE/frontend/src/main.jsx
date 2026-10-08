@@ -68,7 +68,8 @@ import {
   RescueTeamsDashboard,
   EmergencyAnalyticsDashboard,
   EmergencyAlertsDashboard,
-  DijkstraNavigationDashboard
+  DijkstraNavigationDashboard,
+  haversineDistKm
 } from "./dashboards.jsx";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -151,6 +152,25 @@ const blueWaypointIcon = L.divIcon({
   "></div>`,
   iconSize: [14, 14],
   iconAnchor: [7, 7]
+});
+
+const citizenUserIcon = L.divIcon({
+  className: "custom-leaflet-marker",
+  html: `<div style="
+    background: radial-gradient(circle, #2563eb 0%, #1d4ed8 100%);
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 3.5px solid #ffffff;
+    box-shadow: 0 0 0 7px rgba(37, 99, 235, 0.4), 0 4px 14px rgba(0,0,0,0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    cursor: pointer;
+  ">📍</div>`,
+  iconSize: [34, 34],
+  iconAnchor: [17, 17]
 });
 
 function DijkstraRouteMap({
@@ -284,13 +304,13 @@ function DijkstraRouteMap({
   );
 }
 
-function MapCenter({ center }) {
+function MapCenter({ center, zoom = 13 }) {
   const map = useMap();
   useEffect(() => {
     if (center && center[0] && center[1]) {
-      map.setView(center, 13);
+      map.setView(center, zoom);
     }
-  }, [center, map]);
+  }, [center, zoom, map]);
   return null;
 }
 
@@ -368,27 +388,61 @@ function HeatmapOverlay({ incidents }) {
   return null;
 }
 
-function LiveMap({ incidents, teams, center, onSelect, showTeams = true, filter = "ALL" }) {
+function LiveMap({ incidents, teams, center, onSelect, showTeams = true, filter = "ALL", userLocation = null }) {
   const filteredIncidents = incidents.filter(i => {
     if (filter === "CRITICAL") return i.priority >= 80;
     if (filter === "FLOOD") return i.type?.toLowerCase().includes("flood");
     return true;
   });
 
+  // Zoom 10 fits a ~50km radius comfortably on screen
+  const defaultZoom = userLocation ? 10 : 12;
+
   return (
     <div className="map-container-frame">
-      <MapContainer center={center || demoCenter} zoom={12} scrollWheelZoom className="map">
+      <MapContainer center={center || demoCenter} zoom={defaultZoom} scrollWheelZoom className="map">
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <MapCenter center={center} />
+        <MapCenter center={center} zoom={defaultZoom} />
         
         {/* Real-time Disaster Risk Heatmap */}
         <HeatmapOverlay incidents={filteredIncidents} />
 
+        {/* 50km Citizen Safety Radar & Device Location Marker */}
+        {userLocation && (
+          <>
+            <Circle
+              center={[userLocation.lat, userLocation.lng]}
+              radius={50000} // 50 km in meters
+              pathOptions={{
+                color: "#2563eb",
+                fillColor: "#3b82f6",
+                fillOpacity: 0.08,
+                weight: 2.5,
+                dashArray: "6, 6"
+              }}
+            />
+            <Marker position={[userLocation.lat, userLocation.lng]} icon={citizenUserIcon}>
+              <Popup>
+                <div className="custom-map-popup">
+                  <span className="popup-tag info">📍 YOUR LIVE LOCATION</span>
+                  <div className="popup-title">Citizen Device Position</div>
+                  <div className="popup-desc">
+                    <b>50 km Safety Radar Active</b><br />
+                    Coordinates: <b>{userLocation.lat.toFixed(4)}, {userLocation.lng.toFixed(4)}</b><br />
+                    Accuracy: ±{Math.round(userLocation.accuracy || 10)}m
+                  </div>
+                </div>
+              </Popup>
+            </Marker>
+          </>
+        )}
+
         {filteredIncidents.map(i => {
           const markerIcon = i.priority >= 80 ? redIcon : orangeIcon;
+          const distKm = userLocation ? haversineDistKm(userLocation.lat, userLocation.lng, i.lat || demoCenter[0], i.lng || demoCenter[1]) : null;
           return (
             <Marker
               key={i.id}
@@ -405,6 +459,11 @@ function LiveMap({ incidents, teams, center, onSelect, showTeams = true, filter 
                   <div className="popup-desc">
                     ID: <b>{i.id}</b> • {i.people || 1} people affected<br />
                     Status: <span style={{ textTransform: "capitalize" }}>{i.status}</span>
+                    {distKm !== null && (
+                      <div style={{ marginTop: "6px", fontSize: "11.5px", color: distKm <= 50 ? "#2563eb" : "#64748b", fontWeight: "600" }}>
+                        📍 {distKm.toFixed(1)} km from your location {distKm <= 50 ? "(Within 50km)" : "(Beyond 50km)"}
+                      </div>
+                    )}
                   </div>
                   <button className="popup-btn" onClick={() => onSelect?.(i)}>
                     View Details
@@ -414,23 +473,31 @@ function LiveMap({ incidents, teams, center, onSelect, showTeams = true, filter 
             </Marker>
           );
         })}
-        {showTeams && teams.map(t => (
-          <Marker key={t.id} position={[t.lat, t.lng]} icon={greenIcon}>
-            <Popup>
-              <div className="custom-map-popup">
-                <span className="popup-tag info">{t.type} TEAM</span>
-                <div className="popup-title">{t.name}</div>
-                <div className="popup-desc">
-                  Readiness: <b>{t.readiness}%</b> • Personnel: <b>{t.personnel}</b><br />
-                  Equipment: {t.equipment?.join(", ") || "Standard"}
+        {showTeams && teams.map(t => {
+          const distKm = userLocation ? haversineDistKm(userLocation.lat, userLocation.lng, t.lat, t.lng) : null;
+          return (
+            <Marker key={t.id} position={[t.lat, t.lng]} icon={greenIcon}>
+              <Popup>
+                <div className="custom-map-popup">
+                  <span className="popup-tag info">{t.type} TEAM</span>
+                  <div className="popup-title">{t.name}</div>
+                  <div className="popup-desc">
+                    Readiness: <b>{t.readiness}%</b> • Personnel: <b>{t.personnel}</b><br />
+                    Equipment: {t.equipment?.join(", ") || "Standard"}
+                    {distKm !== null && (
+                      <div style={{ marginTop: "6px", fontSize: "11.5px", color: distKm <= 50 ? "#059669" : "#64748b", fontWeight: "600" }}>
+                        🚑 {distKm.toFixed(1)} km from your location {distKm <= 50 ? "(Within 50km)" : "(Beyond 50km)"}
+                      </div>
+                    )}
+                  </div>
+                  <a className="popup-btn" href={`tel:${t.phone}`}>
+                    Call {t.phone}
+                  </a>
                 </div>
-                <a className="popup-btn" href={`tel:${t.phone}`}>
-                  Call {t.phone}
-                </a>
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+              </Popup>
+            </Marker>
+          );
+        })}
       </MapContainer>
       
       <div className="map-floating-legend">
@@ -469,22 +536,51 @@ function Header({
   mobileMenuOpen,
   setMobileMenuOpen
 }) {
-  const toggleLocation = () => {
-    if (gps) {
-      setGps(null);
-    } else {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          p => setGps({ lat: p.coords.latitude, lng: p.coords.longitude, accuracy: p.coords.accuracy }),
-          () => {
-            // Fallback default coordinates for smooth demo experience
-            setGps({ lat: 22.5726, lng: 88.3639, accuracy: 10 });
-          }
-        );
-      } else {
-        setGps({ lat: 22.5726, lng: 88.3639, accuracy: 10 });
-      }
+  const [locating, setLocating] = useState(false);
+
+  const handleCitizenLocation = () => {
+    if (!navigator.geolocation) {
+      alert("⚠️ Geolocation is not supported by your browser or device.");
+      return;
     }
+
+    setLocating(true);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocating(false);
+        const { latitude, longitude, accuracy } = pos.coords;
+        const deviceGps = {
+          lat: latitude,
+          lng: longitude,
+          accuracy: accuracy || 10,
+          radiusKm: 50,
+          enabledFromDevice: true,
+          timestamp: Date.now()
+        };
+        setGps(deviceGps);
+        // Redirect directly to the Live Map view centered on citizen with 50km radius
+        setActive?.("Live Map");
+      },
+      (err) => {
+        setLocating(false);
+        setGps(null);
+        let errorMsg = "⚠️ Location Access Required: Please enable device location / GPS permissions in your device settings to locate yourself on the 50km disaster radar map.";
+        if (err.code === err.PERMISSION_DENIED) {
+          errorMsg = "⚠️ Location Permission Denied: Please enable Location / GPS permissions for this site in your browser or device settings, then click the Location button again.";
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          errorMsg = "⚠️ Device Location Unavailable: Please check that GPS / Location Services are turned ON on your phone or computer.";
+        } else if (err.code === err.TIMEOUT) {
+          errorMsg = "⚠️ Location request timed out. Please check your GPS signal and try clicking Location again.";
+        }
+        alert(errorMsg);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 15000,
+        maximumAge: 0
+      }
+    );
   };
 
   const isRescueAuth = !!rescueUser;
@@ -571,14 +667,18 @@ function Header({
           <span>{theme === "dark" ? "Light" : "Dark"}</span>
         </button>
 
-        <button
-          className={`location-btn ${gps ? "active" : ""}`}
-          onClick={toggleLocation}
-          title="Click to toggle GPS location"
-        >
-          <LocateFixed size={15} />
-          <span>{gps ? "GPS Active" : "Location"}</span>
-        </button>
+        {/* Location Button — STRICTLY for Citizens Section Only */}
+        {role === "citizen" && (
+          <button
+            className={`location-btn ${gps ? "active" : ""}`}
+            onClick={handleCitizenLocation}
+            title={gps ? "📍 Live Location Active (50km Radius) — Click to refresh & center" : "📍 Enable device location to view your 50km disaster radar map"}
+            disabled={locating}
+          >
+            <LocateFixed size={15} />
+            <span>{locating ? "Locating..." : gps ? "📍 50km Live GPS" : "Location"}</span>
+          </button>
+        )}
 
         {activeUser ? (
           <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
@@ -985,9 +1085,25 @@ function Chatbot({ gps, onSOS, open, setOpen }) {
 
 
 
-function CitizenDashboard({ active, setActive, incidents, teams, gps, setIncidents, onOpenChat, onSelectIncident }) {
+function CitizenDashboard({ active, setActive, incidents, teams, gps, setGps, setIncidents, onOpenChat, onSelectIncident }) {
   const [weather, setWeather] = useState(null);
   const [mapFilter, setMapFilter] = useState("ALL");
+
+  const incidentsWithin50km = React.useMemo(() => {
+    if (!gps) return incidents;
+    return incidents.filter(i => {
+      const d = haversineDistKm(gps.lat, gps.lng, i.lat || demoCenter[0], i.lng || demoCenter[1]);
+      return d <= 50;
+    });
+  }, [gps, incidents]);
+
+  const teamsWithin50km = React.useMemo(() => {
+    if (!gps) return teams;
+    return teams.filter(t => {
+      const d = haversineDistKm(gps.lat, gps.lng, t.lat, t.lng);
+      return d <= 50;
+    });
+  }, [gps, teams]);
 
   useEffect(() => {
     const lat = gps?.lat || demoCenter[0];
@@ -1035,6 +1151,44 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
             <button className={`btn-pill-filter ${mapFilter === "FLOOD" ? "active" : ""}`} onClick={() => setMapFilter("FLOOD")}>Floods</button>
           </div>
         </div>
+
+        {/* 50km Device Location Radar Banner */}
+        {gps && (
+          <div style={{
+            background: "linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)",
+            border: "1.5px solid #3b82f6",
+            borderRadius: "12px",
+            padding: "14px 18px",
+            marginBottom: "16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "12px",
+            flexWrap: "wrap",
+            boxShadow: "0 2px 10px rgba(59, 130, 246, 0.12)"
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "24px" }}>📍</span>
+              <div>
+                <b style={{ color: "#1e40af", fontSize: "14px", display: "block" }}>
+                  Your Device Location Active • 50 km Safety Radar
+                </b>
+                <span style={{ fontSize: "12px", color: "#2563eb" }}>
+                  Centered at [{gps.lat.toFixed(4)}, {gps.lng.toFixed(4)}] • You are clearly located at the map center with a 50km radius perimeter
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ background: "#2563eb", color: "#fff", padding: "5px 12px", borderRadius: "16px", fontSize: "12px", fontWeight: "600" }}>
+                {incidentsWithin50km.length} Incidents in 50km
+              </span>
+              <span style={{ background: "#059669", color: "#fff", padding: "5px 12px", borderRadius: "16px", fontSize: "12px", fontWeight: "600" }}>
+                {teamsWithin50km.length} Rescue Teams in 50km
+              </span>
+            </div>
+          </div>
+        )}
+
         <div className="panel-card">
           <LiveMap
             incidents={incidents}
@@ -1042,6 +1196,7 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
             center={gps ? [gps.lat, gps.lng] : demoCenter}
             onSelect={onSelectIncident}
             filter={mapFilter}
+            userLocation={gps}
           />
         </div>
       </main>
@@ -1331,6 +1486,7 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
             center={gps ? [gps.lat, gps.lng] : demoCenter}
             onSelect={onSelectIncident}
             filter={mapFilter}
+            userLocation={gps}
           />
         </div>
 
@@ -3197,6 +3353,7 @@ function App() {
             incidents={incidents}
             teams={teams}
             gps={gps}
+            setGps={setGps}
             setIncidents={setIncidents}
             onOpenChat={() => setSosModalOpen(true)}
             onSelectIncident={setSelectedIncident}

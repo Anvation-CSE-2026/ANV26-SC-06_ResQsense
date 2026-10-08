@@ -397,9 +397,16 @@ header.app-header {
 }
 
 .location-btn.active {
-  background: var(--primary-light);
-  border-color: var(--primary-border);
-  color: var(--primary-dark);
+  background: #eff6ff;
+  border-color: #3b82f6;
+  color: #1d4ed8;
+  box-shadow: 0 0 10px rgba(59, 130, 246, 0.22);
+}
+
+@keyframes pulseGlow {
+  0% { transform: scale(1); box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.4), 0 4px 12px rgba(0,0,0,0.4); }
+  50% { transform: scale(1.08); box-shadow: 0 0 0 10px rgba(37, 99, 235, 0.15), 0 6px 18px rgba(0,0,0,0.45); }
+  100% { transform: scale(1); box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.4), 0 4px 12px rgba(0,0,0,0.4); }
 }
 
 .avatar-circle {
