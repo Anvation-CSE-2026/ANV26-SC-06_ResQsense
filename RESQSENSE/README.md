@@ -46,4 +46,4 @@ The included data is illustrative demo data. Do not use demo contact numbers for
 
 ## Production extensions
 
-Connect PostgreSQL/PostGIS, Socket.IO, a real weather provider, official disaster feeds, SMS provider, authentication, and verified rescue organizations before real-world deployment.
+Connect PostgreSQL/PostGIS, Socket.IO,  real weather provider, official disaster feeds, SMS provider, authentication, and verified rescue organizations before real-world deployment.
