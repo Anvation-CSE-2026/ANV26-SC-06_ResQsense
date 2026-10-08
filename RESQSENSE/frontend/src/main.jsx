@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline, Circle } from "react-leaflet";
 import L from "leaflet";
 import {
   Bell,
@@ -67,7 +67,8 @@ import {
   ResourceAllocationDashboard,
   RescueTeamsDashboard,
   EmergencyAnalyticsDashboard,
-  EmergencyAlertsDashboard
+  EmergencyAlertsDashboard,
+  DijkstraNavigationDashboard
 } from "./dashboards.jsx";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -101,6 +102,187 @@ const createCustomIcon = (color) => {
 const redIcon = createCustomIcon("#e11d48");
 const orangeIcon = createCustomIcon("#d97706");
 const greenIcon = createCustomIcon("#10b981");
+
+const ambulanceMovingIcon = L.divIcon({
+  className: "custom-leaflet-marker",
+  html: `<div style="
+    background-color: #059669;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 3px solid #ffffff;
+    box-shadow: 0 0 16px rgba(16, 185, 129, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+  ">🚑</div>`,
+  iconSize: [32, 32],
+  iconAnchor: [16, 16]
+});
+
+const redPulsingIcon = L.divIcon({
+  className: "custom-leaflet-marker",
+  html: `<div style="
+    background-color: #e11d48;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    border: 3px solid #ffffff;
+    box-shadow: 0 0 16px rgba(225, 29, 72, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+  ">🚨</div>`,
+  iconSize: [30, 30],
+  iconAnchor: [15, 15]
+});
+
+const blueWaypointIcon = L.divIcon({
+  className: "custom-leaflet-marker",
+  html: `<div style="
+    background-color: #2563eb;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #ffffff;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.3);
+  "></div>`,
+  iconSize: [14, 14],
+  iconAnchor: [7, 7]
+});
+
+function DijkstraRouteMap({
+  squad,
+  incident,
+  pathCoordinates = [],
+  alternativeCoordinates = [],
+  dangerZones = [],
+  vehiclePosition = null,
+  isSimulating = false,
+  networkNodes = []
+}) {
+  const center = incident ? [incident.lat || demoCenter[0], incident.lng || demoCenter[1]] : demoCenter;
+
+  return (
+    <div className="map-container-frame" style={{ height: "540px", borderRadius: "12px", overflow: "hidden" }}>
+      <MapContainer center={center} zoom={13} scrollWheelZoom className="map">
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        <MapCenter center={vehiclePosition ? [vehiclePosition.lat, vehiclePosition.lng] : center} />
+
+        {/* Active Hazard / Danger Zones (Dispersal Circles) */}
+        {dangerZones.map(dz => (
+          <Circle
+            key={dz.id}
+            center={[dz.lat, dz.lng]}
+            radius={dz.radiusMeters || 1200}
+            pathOptions={{
+              color: "#e11d48",
+              fillColor: "#e11d48",
+              fillOpacity: 0.18,
+              dashArray: "6, 6",
+              weight: 2
+            }}
+          >
+            <Popup>
+              <div className="custom-map-popup">
+                <span className="popup-tag danger">⚠️ ACTIVE HAZARD ZONE</span>
+                <div className="popup-title">{dz.name}</div>
+                <div className="popup-desc">{dz.alert}</div>
+              </div>
+            </Popup>
+          </Circle>
+        ))}
+
+        {/* Comparative Dotted Route (Un-avoided baseline path) */}
+        {alternativeCoordinates.length > 1 && (
+          <Polyline
+            positions={alternativeCoordinates}
+            pathOptions={{
+              color: "#f59e0b",
+              weight: 3,
+              dashArray: "8, 8",
+              opacity: 0.75
+            }}
+          />
+        )}
+
+        {/* Optimal Dijkstra Path (Glowing Emerald Polyline) */}
+        {pathCoordinates.length > 1 && (
+          <Polyline
+            positions={pathCoordinates}
+            pathOptions={{
+              color: "#059669",
+              weight: 6,
+              opacity: 0.95,
+              lineCap: "round",
+              lineJoin: "round"
+            }}
+          />
+        )}
+
+        {/* Intermediate Road Network Checkpoints */}
+        {networkNodes.map(node => (
+          <Marker
+            key={node.id}
+            position={[node.lat, node.lng]}
+            icon={blueWaypointIcon}
+          >
+            <Popup>
+              <div className="custom-map-popup">
+                <span className="popup-tag info">ROAD JUNCTION</span>
+                <div className="popup-title">{node.name}</div>
+                <div className="popup-desc">{node.desc || "Arterial Network Checkpoint"}</div>
+              </div>
+            </Popup>
+          </Marker>
+        ))}
+
+        {/* Responding Squad (or animated moving vehicle during simulation) */}
+        {squad && (
+          <Marker
+            position={vehiclePosition ? [vehiclePosition.lat, vehiclePosition.lng] : [squad.lat || demoCenter[0], squad.lng || demoCenter[1]]}
+            icon={vehiclePosition ? ambulanceMovingIcon : greenIcon}
+          >
+            <Popup>
+              <div className="custom-map-popup">
+                <span className="popup-tag info">🚑 RESPONDING SQUAD</span>
+                <div className="popup-title">{squad.name}</div>
+                <div className="popup-desc">
+                  Status: <b>{isSimulating ? "EN ROUTE (TRANSIT)" : "STAGING BASE"}</b><br/>
+                  Personnel: {squad.personnel} responders
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        )}
+
+        {/* Target Incident Epicenter */}
+        {incident && (
+          <Marker
+            position={[incident.lat || demoCenter[0], incident.lng || demoCenter[1]]}
+            icon={redPulsingIcon}
+          >
+            <Popup>
+              <div className="custom-map-popup">
+                <span className="popup-tag danger">🚨 TARGET DISASTER SITE</span>
+                <div className="popup-title">{incident.type} ({incident.id})</div>
+                <div className="popup-desc">
+                  Priority: <b>{incident.priority}/100</b><br/>
+                  Reported Affected: <b>{incident.people || 1} people</b>
+                </div>
+              </div>
+            </Popup>
+          </Marker>
+        )}
+      </MapContainer>
+    </div>
+  );
+}
 
 function MapCenter({ center }) {
   const map = useMap();
@@ -442,6 +624,7 @@ function Sidebar({ role, active, setActive, onOpenTwilio, mobileMenuOpen, setMob
   const rescueItems = [
     { label: "Dashboard", icon: <Activity size={18} /> },
     { label: "Assignments", icon: <Truck size={18} /> },
+    { label: "🧭 Rapid Route (Dijkstra)", icon: <Navigation size={18} /> },
     { label: "Operations Map", icon: <MapIcon size={18} /> },
     { label: "Resources", icon: <Package size={18} /> },
     { label: "Manpower Roster", icon: <Users size={18} /> }
@@ -451,6 +634,7 @@ function Sidebar({ role, active, setActive, onOpenTwilio, mobileMenuOpen, setMob
     { label: "Dashboard", icon: <Activity size={18} /> },
     { label: "Incident Queue", icon: <ShieldAlert size={18} /> },
     { label: "🚨 Emergency Alerts", icon: <Radio size={18} /> },
+    { label: "🧭 Rapid Route (Dijkstra)", icon: <Navigation size={18} /> },
     { label: "Control Map", icon: <MapIcon size={18} /> },
     { label: "Resource Allocation", icon: <Package size={18} /> },
     { label: "Rescue Teams", icon: <Truck size={18} /> },
@@ -1241,7 +1425,7 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
   );
 }
 
-function RescueDashboard({ active, incidents, teams, onSelectIncident, onAssignTeam, onRefreshData }) {
+function RescueDashboard({ active, setActive, incidents, teams, onSelectIncident, onAssignTeam, onRefreshData, selectedIncident }) {
   if (active === "Assignments") {
     return (
       <IncidentQueueDashboard
@@ -1251,6 +1435,20 @@ function RescueDashboard({ active, incidents, teams, onSelectIncident, onAssignT
         onAssignTeam={onAssignTeam}
         onRefresh={onRefreshData}
         hideAssignedSquad={true}
+        onOpenDijkstraRoute={(inc) => {
+          onSelectIncident?.(inc);
+          setActive?.("🧭 Rapid Route (Dijkstra)");
+        }}
+      />
+    );
+  }
+  if (active === "🧭 Rapid Route (Dijkstra)" || active === "Rapid Route" || active === "Dijkstra Route") {
+    return (
+      <DijkstraNavigationDashboard
+        incidents={incidents}
+        teams={teams}
+        DijkstraMapComponent={DijkstraRouteMap}
+        initialIncidentId={selectedIncident?.id}
       />
     );
   }
@@ -1295,11 +1493,12 @@ function RescueDashboard({ active, incidents, teams, onSelectIncident, onAssignT
       LiveMapComponent={LiveMap}
       demoCenter={demoCenter}
       hideAssignedSquad={true}
+      onOpenDijkstra={() => setActive?.("🧭 Rapid Route (Dijkstra)")}
     />
   );
 }
 
-function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident, onAssignTeam, onRefreshData, onOpenTwilio }) {
+function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident, onAssignTeam, onRefreshData, onOpenTwilio, selectedIncident }) {
   const pendingCount = teams.filter(t => t.verified === false || t.status === "PENDING_VERIFICATION").length;
 
   if (active === "Incident Queue") {
@@ -1310,6 +1509,10 @@ function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident,
         onSelectIncident={onSelectIncident}
         onAssignTeam={onAssignTeam}
         onRefresh={onRefreshData}
+        onOpenDijkstraRoute={(inc) => {
+          onSelectIncident?.(inc);
+          setActive?.("🧭 Rapid Route (Dijkstra)");
+        }}
       />
     );
   }
@@ -1319,6 +1522,16 @@ function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident,
         incidents={incidents}
         teams={teams}
         onOpenTwilio={onOpenTwilio}
+      />
+    );
+  }
+  if (active === "🧭 Rapid Route (Dijkstra)" || active === "Rapid Route" || active === "Dijkstra Route") {
+    return (
+      <DijkstraNavigationDashboard
+        incidents={incidents}
+        teams={teams}
+        DijkstraMapComponent={DijkstraRouteMap}
+        initialIncidentId={selectedIncident?.id}
       />
     );
   }
@@ -1409,6 +1622,7 @@ function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident,
         LiveMapComponent={LiveMap}
         demoCenter={demoCenter}
         onOpenTwilio={onOpenTwilio}
+        onOpenDijkstra={() => setActive?.("🧭 Rapid Route (Dijkstra)")}
       />
     </>
   );
@@ -1926,13 +2140,28 @@ function IncidentDetailDrawer({ incident, onClose, teams, onAssignTeam }) {
       )}
 
       {onAssignTeam && teams?.length > 0 && !incident.assignedTeam && (
-        <div>
+        <div style={{ marginBottom: "10px" }}>
           <button
             className="btn-chat-primary"
-            style={{ background: "var(--success)" }}
+            style={{ width: "100%", background: "var(--success)" }}
             onClick={() => onAssignTeam(incident.id, teams[0].id)}
           >
             Deploy Nearest Unit ({teams[0].name})
+          </button>
+        </div>
+      )}
+
+      {onOpenDijkstraRoute && (
+        <div>
+          <button
+            className="btn-chat-primary"
+            style={{ width: "100%", background: "#059669", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "10px", fontSize: "13px" }}
+            onClick={() => {
+              onOpenDijkstraRoute(incident);
+              onClose?.();
+            }}
+          >
+            <Compass size={16} /> 🧭 Live Route to Incident (Dijkstra)
           </button>
         </div>
       )}
@@ -2920,10 +3149,13 @@ function App() {
       });
       const updated = await res.json();
       setIncidents(prev => prev.map(i => (i.id === incidentId ? updated : i)));
-      if (selectedIncident?.id === incidentId) {
-        setSelectedIncident(updated);
+      setSelectedIncident(updated);
+      const openMap = window.confirm(
+        `Responder Team ${teamId} has been successfully assigned to incident ${incidentId}!\n\nWould you like to open the Dijkstra Rapid Shortest-Path Route navigation map now?`
+      );
+      if (openMap) {
+        setActive("🧭 Rapid Route (Dijkstra)");
       }
-      alert(`Responder Team ${teamId} has been successfully assigned to incident ${incidentId}.`);
     } catch (e) {
       console.error(e);
     }
@@ -2990,11 +3222,13 @@ function App() {
             />
             <RescueDashboard
               active={active}
+              setActive={setActive}
               incidents={incidents}
               teams={teams}
               onSelectIncident={setSelectedIncident}
               onAssignTeam={null}
               onRefreshData={fetchData}
+              selectedIncident={selectedIncident}
             />
           </div>
         )
@@ -3026,6 +3260,7 @@ function App() {
               onAssignTeam={handleAssignTeam}
               onRefreshData={fetchData}
               onOpenTwilio={() => setTwilioModalOpen(true)}
+              selectedIncident={selectedIncident}
             />
           </div>
         )
@@ -3063,6 +3298,10 @@ function App() {
         onClose={() => setSelectedIncident(null)}
         teams={teams}
         onAssignTeam={role === "rescue" ? null : handleAssignTeam}
+        onOpenDijkstraRoute={(inc) => {
+          setSelectedIncident(inc);
+          setActive("🧭 Rapid Route (Dijkstra)");
+        }}
       />
 
       <footer className="app-footer">
