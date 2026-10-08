@@ -1376,6 +1376,13 @@ function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
     if (!customMessage.trim()) { alert("Please enter a dispatch message."); return; }
     setSending(true);
     try {
+      // Normalize phone number (if 10 digits without country code, default to +91)
+      let cleanPhone = toPhone.trim().replace(/[\s\-()]/g, "");
+      if (!cleanPhone.startsWith("+") && !cleanPhone.startsWith("whatsapp:")) {
+        if (cleanPhone.length === 10) cleanPhone = `+91${cleanPhone}`;
+        else cleanPhone = `+${cleanPhone}`;
+      }
+
       const API = import.meta.env.VITE_API_URL || "/api";
       const res = await fetch(`${API}/twilio/broadcast`, {
         method: "POST",
@@ -1389,16 +1396,32 @@ function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
           people: selectedIncident?.people || 1,
           teamId: nearestTeam?.id || null,
           teamName: nearestTeam?.name || "Rescue Unit",
-          toPhone,
+          toPhone: cleanPhone,
           channel,
           customMessage: customMessage.trim()
         })
       });
+
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const text = await res.text();
+        throw new Error(`Server returned non-JSON response (${res.status}). Ensure backend is running.`);
+      }
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Dispatch failed");
       setReceipt(data);
+
+      // If user selected WhatsApp, also open WhatsApp Web/App directly with the message
+      if (channel === "whatsapp") {
+        const phoneDigits = cleanPhone.replace(/[^0-9]/g, "");
+        const waUrl = `https://wa.me/${phoneDigits}?text=${encodeURIComponent(customMessage.trim())}`;
+        try {
+          window.open(waUrl, "_blank");
+        } catch {}
+      }
     } catch (err) {
-      alert("Dispatch Error: " + err.message);
+      alert("Dispatch Notice: " + err.message);
     } finally {
       setSending(false);
     }
@@ -1421,7 +1444,7 @@ function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
             </div>
             <div>
               <h3>Emergency Dispatch Console</h3>
-              <p>Notify nearest NGO / Rescue Squad via Twilio Sandbox</p>
+              <p>Notify nearest NGO / Rescue Squad via Twilio Sandbox & WhatsApp</p>
             </div>
           </div>
           <button className="twilio-close-btn" onClick={handleClose}>
@@ -1438,7 +1461,7 @@ function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
               <div className="twilio-receipt-header">
                 <div className="twilio-receipt-status">
                   <CheckCircle size={18} />
-                  {receipt.simulated ? "Sandbox Dispatch Simulated" : "Live Dispatch Sent"}
+                  {receipt.simulated ? "Sandbox Dispatch Processed" : "Live Dispatch Sent"}
                 </div>
                 <span style={{ fontSize: "11px", color: "#64748b" }}>{new Date(receipt.timestamp).toLocaleString()}</span>
               </div>
@@ -1476,10 +1499,38 @@ function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
                 </div>
               )}
 
+              {/* Direct WhatsApp Action Button */}
+              {receipt.channel === "whatsapp" && (
+                <a
+                  href={`https://wa.me/${(receipt.to || "8210868501").replace(/[^0-9]/g, "")}?text=${encodeURIComponent(customMessage || receipt.message || "🚨 Emergency Dispatch")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="twilio-dispatch-btn"
+                  style={{
+                    marginTop: "12px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px",
+                    background: "#25D366",
+                    color: "#ffffff",
+                    textDecoration: "none",
+                    fontWeight: 700,
+                    fontSize: "14px",
+                    padding: "12px",
+                    borderRadius: "8px",
+                    boxShadow: "0 4px 14px rgba(37, 211, 102, 0.4)"
+                  }}
+                >
+                  <MessageSquare size={18} />
+                  Open in WhatsApp App / Web (Send to {receipt.to})
+                </a>
+              )}
+
               <button
                 className="twilio-dispatch-btn"
                 onClick={handleClose}
-                style={{ marginTop: "8px", background: "linear-gradient(135deg, #334155 0%, #1e293b 100%)" }}
+                style={{ marginTop: "10px", background: "linear-gradient(135deg, #334155 0%, #1e293b 100%)" }}
               >
                 Close Console
               </button>

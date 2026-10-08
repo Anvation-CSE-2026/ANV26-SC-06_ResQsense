@@ -386,6 +386,24 @@ app.post("/api/twilio/broadcast", async (req, res) => {
     }
   }
 
+  // Robust phone number normalization (defaults 10-digit Indian numbers to +91)
+  let rawPhone = (toPhone || "").toString().trim().replace(/[\s\-()]/g, "");
+  let isWhatsapp = channel === "whatsapp";
+  if (rawPhone.startsWith("whatsapp:")) {
+    rawPhone = rawPhone.replace("whatsapp:", "");
+    isWhatsapp = true;
+  }
+  if (!rawPhone.startsWith("+")) {
+    if (rawPhone.length === 10) {
+      rawPhone = `+91${rawPhone}`;
+    } else if (rawPhone.startsWith("91") && rawPhone.length === 12) {
+      rawPhone = `+${rawPhone}`;
+    } else {
+      rawPhone = `+${rawPhone}`;
+    }
+  }
+  const formattedPhone = isWhatsapp ? `whatsapp:${rawPhone}` : rawPhone;
+
   // Live Twilio Call via REST API
   if (isConfigured) {
     try {
@@ -394,7 +412,7 @@ app.post("/api/twilio/broadcast", async (req, res) => {
       if (channel === "call") {
         const twiml = `<Response><Say voice="alice">Emergency alert from ResQ-Sense Command Center. Attention ${teamName || "Rescue Unit"}. Critical disaster reported at ${incidentType || "risk area"}. Immediate rescue deployment required. Check your dispatch console.</Say></Response>`;
         const params = new URLSearchParams();
-        params.append("To", toPhone);
+        params.append("To", rawPhone);
         params.append("From", TWILIO_PHONE || "+15005550006");
         params.append("Twiml", twiml);
 
@@ -419,7 +437,7 @@ app.post("/api/twilio/broadcast", async (req, res) => {
           sid: data.sid,
           status: data.status || "queued",
           channel: "call",
-          to: toPhone,
+          to: rawPhone,
           teamName,
           incidentId,
           timestamp: new Date().toISOString()
@@ -429,13 +447,8 @@ app.post("/api/twilio/broadcast", async (req, res) => {
           ? (TWILIO_WHATSAPP_FROM.startsWith("whatsapp:") ? TWILIO_WHATSAPP_FROM : `whatsapp:${TWILIO_WHATSAPP_FROM}`)
           : (TWILIO_PHONE || "+15005550006");
 
-        let toNumber = toPhone;
-        if (channel === "whatsapp" && !toNumber.startsWith("whatsapp:")) {
-          toNumber = `whatsapp:${toNumber}`;
-        }
-
         const params = new URLSearchParams();
-        params.append("To", toNumber);
+        params.append("To", formattedPhone);
         params.append("From", fromNumber);
         params.append("Body", dispatchText);
 
@@ -451,8 +464,9 @@ app.post("/api/twilio/broadcast", async (req, res) => {
           }
         );
         const data = await twilioRes.json();
+        console.log("Twilio API response:", JSON.stringify(data));
         if (!twilioRes.ok) {
-          throw new Error(data.message || "Twilio Message dispatch failed");
+          throw new Error((data.message || "Twilio Message dispatch failed") + (data.code ? ` (Code: ${data.code})` : ""));
         }
         return res.json({
           ok: true,
