@@ -332,8 +332,8 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
           <span>System Live</span>
         </div>
 
-        {/* Admin-only: Twilio Emergency Dispatch Button */}
-        {role === "admin" && isAdminAuth && onOpenTwilio && (
+        {/* Twilio Emergency Dispatch Button — Always visible in Admin & Command ops */}
+        {(role === "admin" || role === "rescue" || isAdminAuth) && onOpenTwilio && (
           <button
             className="admin-twilio-trigger-btn"
             onClick={onOpenTwilio}
@@ -343,7 +343,7 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
               <MessageSquare size={16} />
               {criticalCount > 0 && <span className="pulse-ping"></span>}
             </span>
-            <span className="admin-twilio-label">Dispatch</span>
+            <span className="admin-twilio-label">🚨 Dispatch</span>
             {criticalCount > 0 && (
               <span className="admin-twilio-pill">{criticalCount} Alert{criticalCount !== 1 ? "s" : ""}</span>
             )}
@@ -400,7 +400,7 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
   );
 }
 
-function Sidebar({ role, active, setActive }) {
+function Sidebar({ role, active, setActive, onOpenTwilio }) {
   const citizenItems = [
     { label: "Dashboard", icon: <Activity size={18} /> },
     { label: "Live Map", icon: <MapIcon size={18} /> },
@@ -421,6 +421,7 @@ function Sidebar({ role, active, setActive }) {
   const adminItems = [
     { label: "Dashboard", icon: <Activity size={18} /> },
     { label: "Incident Queue", icon: <ShieldAlert size={18} /> },
+    { label: "🚨 Twilio Dispatch", icon: <MessageSquare size={18} />, action: onOpenTwilio },
     { label: "Control Map", icon: <MapIcon size={18} /> },
     { label: "Resource Allocation", icon: <Package size={18} /> },
     { label: "Rescue Teams", icon: <Truck size={18} /> },
@@ -437,7 +438,13 @@ function Sidebar({ role, active, setActive }) {
           <button
             key={item.label}
             className={`sidebar-nav-btn ${active === item.label ? "active" : ""}`}
-            onClick={() => setActive(item.label)}
+            onClick={() => {
+              if (item.action) {
+                item.action();
+              } else {
+                setActive(item.label);
+              }
+            }}
           >
             {item.icon}
             {item.label}
@@ -2808,7 +2815,12 @@ function App() {
           />
         ) : (
           <div className="app-layout">
-            <Sidebar role="admin" active={active} setActive={setActive} />
+            <Sidebar
+              role="admin"
+              active={active}
+              setActive={setActive}
+              onOpenTwilio={() => setTwilioModalOpen(true)}
+            />
             <AdminDashboard
               active={active}
               incidents={incidents}
