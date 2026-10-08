@@ -269,7 +269,23 @@ function LiveMap({ incidents, teams, center, onSelect, showTeams = true, filter 
   );
 }
 
-function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adminUser, onSignOut, onOpenTwilio, criticalCount, theme, setTheme }) {
+function Header({
+  role,
+  setRole,
+  active,
+  setActive,
+  gps,
+  setGps,
+  rescueUser,
+  adminUser,
+  onSignOut,
+  onOpenTwilio,
+  criticalCount,
+  theme,
+  setTheme,
+  mobileMenuOpen,
+  setMobileMenuOpen
+}) {
   const toggleLocation = () => {
     if (gps) {
       setGps(null);
@@ -294,11 +310,23 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
 
   return (
     <header className="app-header">
-      <div className="brand-wrapper" onClick={() => { setRole("citizen"); setActive?.("Dashboard"); }} style={{ cursor: "pointer" }}>
-        <div className="brand-icon">R</div>
-        <div className="brand-info">
-          <h1>ResQ<span>Sense</span></h1>
-          <small>Disaster Intelligence & Response</small>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+        {/* Mobile Hamburger Navigation Button */}
+        <button
+          className="mobile-hamburger-btn"
+          onClick={() => setMobileMenuOpen?.(!mobileMenuOpen)}
+          aria-label="Toggle navigation drawer"
+          title="Toggle Navigation Menu"
+        >
+          {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
+        </button>
+
+        <div className="brand-wrapper" onClick={() => { setRole("citizen"); setActive?.("Dashboard"); }} style={{ cursor: "pointer" }}>
+          <div className="brand-icon">R</div>
+          <div className="brand-info">
+            <h1>ResQ<span>Sense</span></h1>
+            <small>Disaster Intelligence & Response</small>
+          </div>
         </div>
       </div>
 
@@ -332,12 +360,12 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
           <span>System Live</span>
         </div>
 
-        {/* Twilio Emergency Dispatch Button — Always visible in Admin & Command ops */}
-        {(role === "admin" || role === "rescue" || isAdminAuth) && onOpenTwilio && (
+        {/* Twilio Emergency Dispatch Button — STRICTLY visible ONLY in Admin Command Center */}
+        {role === "admin" && onOpenTwilio && (
           <button
             className="admin-twilio-trigger-btn"
             onClick={onOpenTwilio}
-            title="Open Emergency Dispatch Console — Notify NGO/Rescue via WhatsApp, SMS, or Voice Call"
+            title="Open Emergency Dispatch Console — Broadcast to NGO/Rescue via WhatsApp, SMS, or Voice Call"
           >
             <span className="admin-msg-icon-badge">
               <MessageSquare size={16} />
@@ -366,7 +394,7 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
           title="Click to toggle GPS location"
         >
           <LocateFixed size={15} />
-          {gps ? "GPS Active" : "Enable Location"}
+          <span>{gps ? "GPS Active" : "Location"}</span>
         </button>
 
         {activeUser ? (
@@ -400,7 +428,7 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
   );
 }
 
-function Sidebar({ role, active, setActive, onOpenTwilio }) {
+function Sidebar({ role, active, setActive, onOpenTwilio, mobileMenuOpen, setMobileMenuOpen }) {
   const citizenItems = [
     { label: "Dashboard", icon: <Activity size={18} /> },
     { label: "Live Map", icon: <MapIcon size={18} /> },
@@ -431,26 +459,43 @@ function Sidebar({ role, active, setActive, onOpenTwilio }) {
   const navItems = role === "citizen" ? citizenItems : role === "rescue" ? rescueItems : adminItems;
 
   return (
-    <aside className="app-sidebar">
-      <div>
-        <div className="sidebar-section-title">Navigation</div>
-        {navItems.map(item => (
-          <button
-            key={item.label}
-            className={`sidebar-nav-btn ${active === item.label ? "active" : ""}`}
-            onClick={() => {
-              if (item.action) {
-                item.action();
-              } else {
-                setActive(item.label);
-              }
-            }}
-          >
-            {item.icon}
-            {item.label}
-          </button>
-        ))}
-      </div>
+    <>
+      {mobileMenuOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={() => setMobileMenuOpen?.(false)}
+        />
+      )}
+      <aside className={`app-sidebar ${mobileMenuOpen ? "mobile-open" : ""}`}>
+        <div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+            <div className="sidebar-section-title">Navigation</div>
+            <button
+              className="sidebar-mobile-close-btn"
+              onClick={() => setMobileMenuOpen?.(false)}
+              aria-label="Close Sidebar Drawer"
+            >
+              <X size={16} />
+            </button>
+          </div>
+          {navItems.map(item => (
+            <button
+              key={item.label}
+              className={`sidebar-nav-btn ${active === item.label ? "active" : ""}`}
+              onClick={() => {
+                if (item.action) {
+                  item.action();
+                } else {
+                  setActive(item.label);
+                }
+                setMobileMenuOpen?.(false);
+              }}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </button>
+          ))}
+        </div>
 
       <div className="helpline-box">
         <h4><Phone size={14} /> National Helplines</h4>
@@ -471,6 +516,7 @@ function Sidebar({ role, active, setActive, onOpenTwilio }) {
         </div>
       </div>
     </aside>
+  </>
   );
 }
 
@@ -1233,6 +1279,7 @@ function RescueDashboard({ active, incidents, teams, onSelectIncident, onAssignT
         teams={teams}
         incidents={incidents}
         onRefresh={onRefreshData}
+        role="rescue"
       />
     );
   }
@@ -1251,7 +1298,9 @@ function RescueDashboard({ active, incidents, teams, onSelectIncident, onAssignT
   );
 }
 
-function AdminDashboard({ active, incidents, teams, onSelectIncident, onAssignTeam, onRefreshData }) {
+function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident, onAssignTeam, onRefreshData }) {
+  const pendingCount = teams.filter(t => t.verified === false || t.status === "PENDING_VERIFICATION").length;
+
   if (active === "Incident Queue") {
     return (
       <IncidentQueueDashboard
@@ -1289,6 +1338,7 @@ function AdminDashboard({ active, incidents, teams, onSelectIncident, onAssignTe
         teams={teams}
         incidents={incidents}
         onRefresh={onRefreshData}
+        role="admin"
       />
     );
   }
@@ -1302,15 +1352,54 @@ function AdminDashboard({ active, incidents, teams, onSelectIncident, onAssignTe
   }
   // Default is "Dashboard"
   return (
-    <DashboardOverview
-      incidents={incidents}
-      teams={teams}
-      onSelectIncident={onSelectIncident}
-      onAssignTeam={onAssignTeam}
-      onRefresh={onRefreshData}
-      LiveMapComponent={LiveMap}
-      demoCenter={demoCenter}
-    />
+    <>
+      {pendingCount > 0 && (
+        <div style={{ padding: "0 clamp(16px, 3vw, 36px)", paddingTop: "18px", maxWidth: "1640px", margin: "0 auto", width: "100%" }}>
+          <div
+            style={{
+              background: "#fffbeb",
+              border: "1.5px solid #f59e0b",
+              borderRadius: "10px",
+              padding: "14px 18px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "12px",
+              flexWrap: "wrap",
+              boxShadow: "0 2px 10px rgba(245,158,11,0.12)"
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0, flex: 1 }}>
+              <span style={{ fontSize: "20px", flexShrink: 0 }}>🚨</span>
+              <div style={{ minWidth: 0, overflowWrap: "break-word" }}>
+                <b style={{ color: "#92400e", fontSize: "14px", display: "block" }}>
+                  {pendingCount} Rescue Squad{pendingCount !== 1 ? "s" : ""} Awaiting Admin Verification!
+                </b>
+                <p style={{ margin: 0, fontSize: "12px", color: "#b45309" }}>
+                  Newly registered field units cannot be dispatched until verified by State Command Admin.
+                </p>
+              </div>
+            </div>
+            <button
+              className="btn-chat-primary"
+              style={{ padding: "8px 16px", fontSize: "12.5px", background: "#d97706", whiteSpace: "nowrap" }}
+              onClick={() => setActive?.("Rescue Teams")}
+            >
+              Review & Verify Squads →
+            </button>
+          </div>
+        </div>
+      )}
+      <DashboardOverview
+        incidents={incidents}
+        teams={teams}
+        onSelectIncident={onSelectIncident}
+        onAssignTeam={onAssignTeam}
+        onRefresh={onRefreshData}
+        LiveMapComponent={LiveMap}
+        demoCenter={demoCenter}
+      />
+    </>
   );
 }
 
@@ -1328,9 +1417,10 @@ function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
   // Find the selected incident object
   const selectedIncident = incidents.find(i => i.id === selectedIncidentId) || null;
 
-  // Calculate nearest NGO/Rescue team from the selected incident
+  // Calculate nearest verified NGO/Rescue team from the selected incident
   const nearestTeam = React.useMemo(() => {
-    if (!selectedIncident || !teams?.length) return null;
+    const verifiedSquads = (teams || []).filter(t => t.verified !== false && t.status !== "PENDING_VERIFICATION");
+    if (!selectedIncident || !verifiedSquads.length) return null;
     const iLat = selectedIncident.lat || 22.5726;
     const iLng = selectedIncident.lng || 88.3639;
     const getDistKm = (t) => {
@@ -1339,7 +1429,7 @@ function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
       const dLng = (t.lng - iLng) * 111 * Math.cos(iLat * Math.PI / 180);
       return Math.round(Math.sqrt(dLat * dLat + dLng * dLng) * 10) / 10;
     };
-    return [...teams]
+    return [...verifiedSquads]
       .map(t => ({ ...t, dist: getDistKm(t) }))
       .sort((a, b) => a.dist - b.dist)[0] || null;
   }, [selectedIncident, teams]);
@@ -2584,7 +2674,7 @@ function App() {
   const [sosModalOpen, setSosModalOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [twilioModalOpen, setTwilioModalOpen] = useState(false);
-
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -2639,7 +2729,7 @@ function App() {
   const fetchData = () => {
     Promise.all([
       fetch(`${API}/incidents`).then(r => r.json()),
-      fetch(`${API}/teams`).then(r => r.json())
+      fetch(`${API}/teams?includePending=true`).then(r => r.json())
     ])
       .then(([incData, teamData]) => {
         setIncidents(incData);
@@ -2767,16 +2857,24 @@ function App() {
         rescueUser={rescueUser}
         adminUser={adminUser}
         onSignOut={handleSignOut}
-        onOpenTwilio={() => setTwilioModalOpen(true)}
+        onOpenTwilio={role === "admin" ? () => setTwilioModalOpen(true) : null}
         criticalCount={incidents.filter(i => i.priority >= 80).length}
         theme={theme}
         setTheme={setTheme}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
       />
 
       {/* Citizen View: Free and open to everyone without login */}
       {role === "citizen" && (
         <div className="app-layout">
-          <Sidebar role="citizen" active={active} setActive={setActive} />
+          <Sidebar
+            role="citizen"
+            active={active}
+            setActive={setActive}
+            mobileMenuOpen={mobileMenuOpen}
+            setMobileMenuOpen={setMobileMenuOpen}
+          />
           <CitizenDashboard
             active={active}
             setActive={setActive}
@@ -2799,7 +2897,13 @@ function App() {
           />
         ) : (
           <div className="app-layout">
-            <Sidebar role="rescue" active={active} setActive={setActive} />
+            <Sidebar
+              role="rescue"
+              active={active}
+              setActive={setActive}
+              mobileMenuOpen={mobileMenuOpen}
+              setMobileMenuOpen={setMobileMenuOpen}
+            />
             <RescueDashboard
               active={active}
               incidents={incidents}
@@ -2826,9 +2930,12 @@ function App() {
               active={active}
               setActive={setActive}
               onOpenTwilio={() => setTwilioModalOpen(true)}
+              mobileMenuOpen={mobileMenuOpen}
+              setMobileMenuOpen={setMobileMenuOpen}
             />
             <AdminDashboard
               active={active}
+              setActive={setActive}
               incidents={incidents}
               teams={teams}
               onSelectIncident={setSelectedIncident}

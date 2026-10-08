@@ -208,6 +208,44 @@ header.app-header {
   box-shadow: 0 1px 4px rgba(12, 41, 27, 0.03);
 }
 
+.mobile-hamburger-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-light);
+  background: var(--bg-surface);
+  color: var(--text-main);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.mobile-hamburger-btn:hover {
+  background: var(--bg-subtle);
+  border-color: var(--primary-border);
+  color: var(--primary-dark);
+}
+
+.sidebar-mobile-close-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-light);
+  background: var(--bg-subtle);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.sidebar-backdrop {
+  display: none;
+}
+
 .brand-wrapper {
   display: flex;
   align-items: center;
@@ -587,8 +625,8 @@ main.main-viewport {
    ========================================= */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 18px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
   margin-bottom: 24px;
 }
 
@@ -596,12 +634,14 @@ main.main-viewport {
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  padding: 20px;
+  padding: clamp(14px, 1.8vw, 20px);
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: clamp(10px, 1.4vw, 16px);
   box-shadow: var(--shadow-sm);
   transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .stat-card:hover {
@@ -611,8 +651,8 @@ main.main-viewport {
 }
 
 .stat-icon-wrapper {
-  width: 48px;
-  height: 48px;
+  width: 46px;
+  height: 46px;
   border-radius: var(--radius-md);
   display: grid;
   place-items: center;
@@ -639,21 +679,33 @@ main.main-viewport {
   color: #15803d;
 }
 
+.stat-meta {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .stat-meta small {
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 600;
   color: var(--text-muted);
   display: block;
+  line-height: 1.35;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .stat-meta strong {
-  font-size: 26px;
+  font-size: clamp(20px, 2.3vw, 26px);
   font-weight: 800;
   color: var(--text-main);
   letter-spacing: -0.5px;
-  line-height: 1.1;
+  line-height: 1.15;
   display: block;
   margin-top: 3px;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .stat-trend {
@@ -662,6 +714,9 @@ main.main-viewport {
   color: var(--primary-dark);
   margin-top: 4px;
   display: inline-block;
+  line-height: 1.3;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 /* =========================================
@@ -688,15 +743,25 @@ main.main-viewport {
   box-shadow: var(--shadow-sm);
   overflow: hidden;
   margin-bottom: 22px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .panel-header {
-  padding: 18px 22px;
+  padding: 16px 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-light);
   background: var(--bg-surface);
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.panel-title-group {
+  min-width: 0;
+  flex: 1;
 }
 
 .panel-title-group h3 {
@@ -704,12 +769,14 @@ main.main-viewport {
   font-weight: 700;
   color: var(--text-main);
   letter-spacing: -0.2px;
+  word-break: break-word;
 }
 
 .panel-title-group p {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 2px;
+  word-break: break-word;
 }
 
 .panel-header-actions {
@@ -1076,12 +1143,15 @@ main.main-viewport {
    TABLES & INCIDENT ROWS
    ========================================= */
 .table-container {
-  padding: 8px 18px 18px;
+  padding: 8px clamp(10px, 2vw, 18px) 18px;
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
 }
 
 .modern-table {
   width: 100%;
+  min-width: 580px;
   border-collapse: separate;
   border-spacing: 0 8px;
 }
@@ -2552,4 +2622,248 @@ footer.app-footer {
   background: rgba(255, 255, 255, 0.7);
   padding: 8px 12px;
   border-radius: 6px;
+  word-break: break-word;
 }
+
+/* ==========================================================================
+   CROSS-DEVICE RESPONSIVE LAYOUTS & BOX FITTING (Mobile, Tablet, Desktop)
+   ========================================================================== */
+
+/* Large Tablets & Small Laptops (<= 1200px) */
+@media (max-width: 1200px) {
+  .dashboard-grid-2-1 {
+    grid-template-columns: 1fr;
+    gap: 20px;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+    gap: 14px;
+  }
+}
+
+/* Medium Tablets & Landscape (<= 992px) */
+@media (max-width: 992px) {
+  .grid-equal-2 {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  header.app-header {
+    height: auto;
+    min-height: 64px;
+    padding: 8px 16px;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .brand-wrapper {
+    gap: 8px;
+  }
+
+  .role-segmented-control {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 3px;
+    margin-top: 4px;
+  }
+
+  .header-actions {
+    margin-left: auto;
+  }
+
+  /* Responsive Mobile Sidebar Drawer */
+  .mobile-hamburger-btn {
+    display: inline-flex !important;
+  }
+
+  .sidebar-mobile-close-btn {
+    display: inline-flex !important;
+  }
+
+  aside.app-sidebar {
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 280px;
+    max-width: 85vw;
+    z-index: 10000;
+    background: var(--bg-surface);
+    box-shadow: 4px 0 30px rgba(0, 0, 0, 0.25);
+    transform: translateX(-100%);
+    transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    overflow-y: auto;
+    border-right: 1px solid var(--border-light);
+  }
+
+  aside.app-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.55);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    z-index: 9999;
+    animation: fadeIn 0.2s ease;
+  }
+
+  main.main-viewport {
+    padding: 20px 16px;
+    max-width: 100%;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+}
+
+/* Mobile Phones & Phablets (<= 768px) */
+@media (max-width: 768px) {
+  .page-header-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .page-header-row h2 {
+    font-size: 21px;
+    line-height: 1.25;
+  }
+
+  .header-right-btns {
+    width: 100%;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .role-tab-btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    flex: 1;
+    justify-content: center;
+  }
+
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px 16px;
+  }
+
+  .panel-header-actions {
+    width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .table-container {
+    padding: 8px 10px 14px;
+  }
+
+  .weather-card-box {
+    margin: 12px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .weather-details-pills {
+    text-align: left;
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .twilio-modal-box,
+  .auth-container-card {
+    max-width: 96vw;
+    width: 96vw;
+    margin: 8px auto;
+  }
+
+  .twilio-phone-input-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .twilio-test-btn {
+    text-align: center;
+  }
+
+  .chatbot-panel-wrapper {
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-width: 100%;
+  }
+
+  .detail-drawer {
+    width: 100% !important;
+    max-width: 100vw !important;
+    border-radius: 16px 16px 0 0;
+  }
+}
+
+/* Compact Mobile Devices (<= 480px) */
+@media (max-width: 480px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .brand-info small {
+    display: none;
+  }
+
+  .brand-info h1 {
+    font-size: 15px;
+  }
+
+  .status-pill {
+    display: none;
+  }
+
+  .location-btn span,
+  .theme-toggle span {
+    display: none;
+  }
+
+  .location-btn,
+  .theme-toggle {
+    padding: 6px 9px;
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  .stat-card {
+    padding: 14px;
+  }
+
+  .stat-meta strong {
+    font-size: 22px;
+  }
+
+  .admin-twilio-trigger-btn {
+    padding: 6px 10px;
+  }
+
+  .admin-twilio-label {
+    display: none;
+  }
+
+  .btn-sos {
+    width: 100%;
+    justify-content: center;
+  }
+}
+

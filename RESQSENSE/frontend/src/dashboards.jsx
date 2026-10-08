@@ -237,7 +237,7 @@ export function DashboardOverview({
             onChange={e => setSelectedTeamId(e.target.value)}
             style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #e2e8f0", fontSize: "13px", marginBottom: "16px" }}
           >
-            {teams.map(t => (
+            {teams.filter(t => t.verified !== false && t.status !== "PENDING_VERIFICATION").map(t => (
               <option key={t.id} value={t.id}>
                 {t.name} ({t.type} • {t.personnel} personnel)
               </option>
@@ -564,7 +564,7 @@ export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onA
             onChange={e => setChosenTeamId(e.target.value)}
             style={{ width: "100%", padding: "10px", borderRadius: "8px", border: "1px solid #cbd5e1", marginBottom: "16px" }}
           >
-            {teams.map(t => (
+            {teams.filter(t => t.verified !== false && t.status !== "PENDING_VERIFICATION").map(t => (
               <option key={t.id} value={t.id}>{t.name} ({t.type} • Readiness {t.readiness}%)</option>
             ))}
           </select>
@@ -826,11 +826,11 @@ export function ResourceAllocationDashboard({ incidents, teams }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px", marginBottom: "24px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: "16px", marginBottom: "24px" }}>
         {filtered.map(res => {
           const pct = Math.round((res.deployed / res.total) * 100);
           return (
-            <div key={res.id} className="panel-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+            <div key={res.id} className="panel-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", margin: 0 }}>
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
                   <span style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase" }}>{res.category}</span>
@@ -947,10 +947,11 @@ export function ResourceAllocationDashboard({ incidents, teams }) {
 // ============================================================================
 // 5. RESCUE TEAMS DASHBOARD
 // ============================================================================
-export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
+export function RescueTeamsDashboard({ teams, incidents, onRefresh, role = "admin" }) {
   const [typeFilter, setTypeFilter] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [showAddModal, setShowAddModal] = useState(false);
+  const [verifyingId, setVerifyingId] = useState(null);
 
   // New squad form state
   const [squadName, setSquadName] = useState("");
@@ -958,6 +959,28 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
   const [squadPhone, setSquadPhone] = useState("+91-98000-00000");
   const [squadPersonnel, setSquadPersonnel] = useState("10");
   const [squadReadiness, setSquadReadiness] = useState("95");
+
+  const pendingTeams = teams.filter(t => t.verified === false || t.status === "PENDING_VERIFICATION");
+  const verifiedTeams = teams.filter(t => t.verified !== false && t.status !== "PENDING_VERIFICATION");
+
+  const handleVerifySquad = async (teamId, approved) => {
+    setVerifyingId(teamId);
+    try {
+      const res = await fetch(`${API}/teams/${teamId}/verify`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Verification failed");
+      alert(data.message || (approved ? "Squad verified and activated!" : "Squad registration declined."));
+      onRefresh?.();
+    } catch (err) {
+      alert("Verification Error: " + err.message);
+    } finally {
+      setVerifyingId(null);
+    }
+  };
 
   const handleCreateSquad = async (e) => {
     e.preventDefault();
@@ -972,14 +995,19 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
           personnel: Number(squadPersonnel),
           readiness: Number(squadReadiness),
           skills: ["Search & Rescue", "Medical", "Flood"],
-          equipment: ["Rescue Vehicle", "Medical Kit", "Boat"],
-          status: "AVAILABLE"
+          equipment: ["Rescue Vehicle", "Medical Kit", "Boat"]
         })
       });
+      const data = await res.json();
       if (res.ok) {
         setShowAddModal(false);
         setSquadName("");
+        alert(
+          "🚨 Registration Request Transmitted!\n\nAn official notification has been sent to the State Command Admin. Once verified by the Admin, this rescue squad will appear on the active roster and be authorized for emergency field dispatches."
+        );
         onRefresh?.();
+      } else {
+        throw new Error(data.error || "Failed to register squad");
       }
     } catch (err) {
       alert("Error adding squad: " + err.message);
@@ -1000,7 +1028,7 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
     }
   };
 
-  const filtered = teams.filter(t => {
+  const filtered = verifiedTeams.filter(t => {
     if (typeFilter !== "ALL" && t.type !== typeFilter) return false;
     if (statusFilter !== "ALL" && t.status !== statusFilter) return false;
     return true;
@@ -1010,8 +1038,8 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
     <main className="main-viewport">
       <div className="page-header-row">
         <div>
-          <span className="page-eyebrow">Force Readiness & Roster</span>
-          <h2>Rescue Force Directory & Team Readiness</h2>
+          <span className="page-eyebrow">Force Readiness & Verification Roster</span>
+          <h2>Rescue Force Directory & Verification Queue</h2>
           <p>Disaster response units, specialized squads, and operational status.</p>
         </div>
         <div className="header-right-btns">
@@ -1025,39 +1053,139 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
         <div className="stat-card">
           <div className="stat-icon-wrapper green"><Truck size={22} /></div>
           <div className="stat-meta">
-            <small>Total Response Units</small>
-            <strong>{teams.length}</strong>
-            <span className="stat-trend">100% Verified</span>
+            <small>Active Verified Units</small>
+            <strong>{verifiedTeams.length}</strong>
+            <span className="stat-trend">Ready for Dispatch</span>
+          </div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon-wrapper amber"><Clock size={22} /></div>
+          <div className="stat-meta">
+            <small>Pending Admin Clearance</small>
+            <strong>{pendingTeams.length}</strong>
+            <span className="stat-trend" style={{ color: pendingTeams.length > 0 ? "#b45309" : "inherit" }}>
+              {pendingTeams.length > 0 ? "Awaiting Verification" : "All Clear"}
+            </span>
           </div>
         </div>
         <div className="stat-card">
           <div className="stat-icon-wrapper emerald"><Users size={22} /></div>
           <div className="stat-meta">
-            <small>Total Mobilized Responders</small>
-            <strong>{teams.reduce((acc, t) => acc + (t.personnel || 0), 0)}</strong>
+            <small>Mobilized Responders</small>
+            <strong>{verifiedTeams.reduce((acc, t) => acc + (t.personnel || 0), 0)}</strong>
             <span className="stat-trend">Ready for Triage</span>
           </div>
         </div>
         <div className="stat-card">
           <div className="stat-icon-wrapper blue"><Activity size={22} /></div>
           <div className="stat-meta">
-            <small>Units Available for Dispatch</small>
-            <strong>{teams.filter(t => t.status === "AVAILABLE").length}</strong>
-            <span className="stat-trend">Immediate Response</span>
-          </div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon-wrapper amber"><Clock size={22} /></div>
-          <div className="stat-meta">
-            <small>Currently Deployed in Field</small>
-            <strong>{teams.filter(t => t.status === "DEPLOYED").length}</strong>
-            <span className="stat-trend">On Active Missions</span>
+            <small>Units on Active Missions</small>
+            <strong>{verifiedTeams.filter(t => t.status === "DEPLOYED").length}</strong>
+            <span className="stat-trend">In Field</span>
           </div>
         </div>
       </div>
 
+      {/* PENDING ADMIN VERIFICATION SECTION */}
+      {pendingTeams.length > 0 && (
+        <div className="panel-card" style={{ border: "2px solid #f59e0b", background: "#fffbeb", marginBottom: "24px" }}>
+          <div className="panel-header" style={{ background: "#fef3c7", borderBottom: "1px solid #fde68a" }}>
+            <div className="panel-title-group">
+              <h3 style={{ color: "#92400e", display: "flex", alignItems: "center", gap: "8px" }}>
+                <Clock size={18} /> Squads Awaiting Admin Verification ({pendingTeams.length})
+              </h3>
+              <p style={{ color: "#b45309" }}>
+                {role === "admin"
+                  ? "Admin approval required: Review newly registered rescue units below before authorizing them for field deployment."
+                  : "Your newly registered rescue unit is pending State Command Admin authorization. You will be cleared once approved."}
+              </p>
+            </div>
+            {role === "admin" && (
+              <span className="priority-tag medium" style={{ background: "#fde68a", color: "#854d0e" }}>
+                Admin Clearance Required
+              </span>
+            )}
+          </div>
+
+          <div style={{ padding: "18px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: "16px" }}>
+            {pendingTeams.map(team => (
+              <div
+                key={team.id}
+                style={{
+                  background: "#ffffff",
+                  border: "1.5px solid #fcd34d",
+                  borderRadius: "10px",
+                  padding: "16px",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  boxShadow: "0 2px 8px rgba(245, 158, 11, 0.08)"
+                }}
+              >
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
+                    <span className="user-badge-tag">{team.id}</span>
+                    <span className="priority-tag medium" style={{ background: "#fef3c7", color: "#b45309", fontSize: "11px" }}>
+                      ⏳ Pending Verification
+                    </span>
+                  </div>
+
+                  <h4 style={{ margin: "0 0 6px 0", color: "#0f172a", fontSize: "15px", wordBreak: "break-word" }}>
+                    {team.name}
+                  </h4>
+                  <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "10px" }}>
+                    Type: <b>{team.type}</b> • Personnel: <b>{team.personnel}</b> responders
+                  </div>
+
+                  <div style={{ marginBottom: "10px" }}>
+                    <small style={{ fontWeight: "700", color: "#475569", display: "block", marginBottom: "4px" }}>Declared Skills:</small>
+                    <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
+                      {(team.skills || ["General Emergency Response"]).map(sk => (
+                        <span key={sk} style={{ fontSize: "11px", background: "#f1f5f9", color: "#334155", padding: "2px 6px", borderRadius: "4px" }}>
+                          {sk}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div style={{ fontSize: "12px", color: "#64748b" }}>
+                    Hotline: <a href={`tel:${team.phone}`} style={{ color: "#2563eb", fontWeight: "600" }}>{team.phone}</a>
+                  </div>
+                </div>
+
+                {role === "admin" ? (
+                  <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
+                    <button
+                      className="btn-chat-primary"
+                      style={{ flex: 1, padding: "8px 10px", fontSize: "12px", background: "#059669", color: "#fff" }}
+                      disabled={verifyingId === team.id}
+                      onClick={() => handleVerifySquad(team.id, true)}
+                    >
+                      {verifyingId === team.id ? "Verifying..." : "✅ Verify & Activate"}
+                    </button>
+                    <button
+                      className="btn-action-sm"
+                      style={{ padding: "8px 10px", fontSize: "12px", color: "#e11d48", borderColor: "#fecdd3", background: "#fff1f2" }}
+                      disabled={verifyingId === team.id}
+                      onClick={() => handleVerifySquad(team.id, false)}
+                    >
+                      ❌ Decline
+                    </button>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: "14px", padding: "8px 10px", background: "#f8fafc", borderRadius: "6px", fontSize: "11.5px", color: "#64748b", textAlign: "center" }}>
+                    ⏳ Awaiting State Command Authorization
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* VERIFIED ACTIVE SQUADS LIST */}
       <div className="panel-card" style={{ marginBottom: "16px" }}>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", justifyContent: "space-between", alignItems: "center" }}>
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
             {["ALL", "GOVERNMENT", "NGO"].map(typ => (
               <button
@@ -1086,18 +1214,18 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "16px" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: "16px" }}>
         {filtered.map(team => (
-          <div key={team.id} className="panel-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <div key={team.id} className="panel-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", margin: 0 }}>
             <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "8px", marginBottom: "8px", flexWrap: "wrap" }}>
                 <span className="user-badge-tag">{team.id}</span>
                 <span className={`priority-tag ${team.status === "AVAILABLE" ? "low" : "medium"}`}>
                   {team.status}
                 </span>
               </div>
 
-              <h4 style={{ margin: "0 0 4px 0", color: "#0f172a" }}>{team.name}</h4>
+              <h4 style={{ margin: "0 0 4px 0", color: "#0f172a", wordBreak: "break-word" }}>{team.name}</h4>
               <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "10px" }}>
                 Agency: <b>{team.type}</b> • Personnel: <b>{team.personnel}</b> responders
               </div>
@@ -1149,9 +1277,16 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
           <div className="auth-container-card" style={{ maxWidth: "480px" }}>
             <div className="auth-banner-header rescue-theme">
               <h3>Register New Rescue Unit</h3>
-              <p>Add a verified field squad to the active roster.</p>
+              <p>Squad will be sent to State Command Admin for operational verification.</p>
             </div>
             <form onSubmit={handleCreateSquad} style={{ padding: "24px" }}>
+              <div className="auth-notice-box" style={{ marginBottom: "16px" }}>
+                <ShieldAlert size={16} />
+                <span>
+                  Admin Verification Notice: Newly registered squads require Admin clearance before operational dispatch.
+                </span>
+              </div>
+
               <div className="auth-input-group">
                 <label className="auth-label">Squad / Unit Name</label>
                 <input type="text" className="auth-input" placeholder="e.g. NDRF Sector-8 Marine Unit" value={squadName} onChange={e => setSquadName(e.target.value)} required />
@@ -1177,7 +1312,7 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
               </div>
 
               <div style={{ display: "flex", gap: "10px", marginTop: "16px" }}>
-                <button type="submit" className="btn-chat-primary" style={{ flex: 1 }}>Register Unit</button>
+                <button type="submit" className="btn-chat-primary" style={{ flex: 1 }}>Submit for Verification</button>
                 <button type="button" className="btn-auth-back" onClick={() => setShowAddModal(false)}>Cancel</button>
               </div>
             </form>

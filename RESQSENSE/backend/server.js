@@ -61,11 +61,22 @@ if (isSupabaseConfigured) {
 // ──────────────────────────────────────────────
 // IN-MEMORY DEMO DATA (fallback when no Supabase)
 // ──────────────────────────────────────────────
-const demoTeams = [
-  { id:"T-101", name:"Rapid Relief Foundation (Red Cross Partner)", type:"NGO", lat:22.5726, lng:88.3639, phone:"+91-1800-180-1104", readiness:94, personnel:8, skills:["Flood","Medical","Search & Rescue"], equipment:["Boat","Medical Kit"], status:"AVAILABLE" },
-  { id:"T-102", name:"District Emergency Response Unit", type:"GOVERNMENT", lat:22.585, lng:88.37, phone:"+91-1077", readiness:97, personnel:12, skills:["Flood","Search & Rescue","Earthquake"], equipment:["Boat","Ambulance"], status:"AVAILABLE" },
-  { id:"T-103", name:"Community Rescue Network NGO", type:"NGO", lat:22.56, lng:88.35, phone:"+91-98300-99881", readiness:88, personnel:6, skills:["Medical","Fire"], equipment:["Medical Kit","Rescue Vehicle"], status:"AVAILABLE" },
-  { id:"T-104", name:"Urban Search & Rescue Cell (NDRF Liaison)", type:"GOVERNMENT", lat:22.59, lng:88.39, phone:"+91-1070", readiness:91, personnel:10, skills:["Earthquake","Landslide","Search & Rescue"], equipment:["Rescue Vehicle","Medical Kit"], status:"AVAILABLE" }
+let demoTeams = [
+  { id:"T-101", name:"Rapid Relief Foundation (Red Cross Partner)", type:"NGO", lat:22.5726, lng:88.3639, phone:"+91-1800-180-1104", readiness:94, personnel:8, skills:["Flood","Medical","Search & Rescue"], equipment:["Boat","Medical Kit"], status:"AVAILABLE", verified:true },
+  { id:"T-102", name:"District Emergency Response Unit", type:"GOVERNMENT", lat:22.585, lng:88.37, phone:"+91-1077", readiness:97, personnel:12, skills:["Flood","Search & Rescue","Earthquake"], equipment:["Boat","Ambulance"], status:"AVAILABLE", verified:true },
+  { id:"T-103", name:"Community Rescue Network NGO", type:"NGO", lat:22.56, lng:88.35, phone:"+91-98300-99881", readiness:88, personnel:6, skills:["Medical","Fire"], equipment:["Medical Kit","Rescue Vehicle"], status:"AVAILABLE", verified:true },
+  { id:"T-104", name:"Urban Search & Rescue Cell (NDRF Liaison)", type:"GOVERNMENT", lat:22.59, lng:88.39, phone:"+91-1070", readiness:91, personnel:10, skills:["Earthquake","Landslide","Search & Rescue"], equipment:["Rescue Vehicle","Medical Kit"], status:"AVAILABLE", verified:true }
+];
+
+let adminNotifications = [
+  {
+    id: "NOTIF-INIT-1",
+    type: "SYSTEM_ONLINE",
+    title: "Command Center Online",
+    message: "Twilio emergency dispatch channels and triage matrix are operational.",
+    createdAt: new Date().toISOString(),
+    read: true
+  }
 ];
 
 let demoIncidents = [
@@ -160,7 +171,17 @@ async function getActiveTeams() {
   if (supabaseAdmin) {
     try {
       const { data, error } = await supabaseAdmin.from("teams").select("*").order("readiness", { ascending: false });
-      if (!error && data?.length) return data;
+      if (!error && Array.isArray(data)) {
+        const supaIds = new Set(data.map(d => d.id));
+        const merged = data.map(d => {
+          const mem = demoTeams.find(t => t.id === d.id);
+          return mem ? { ...d, ...mem } : { ...d, verified: d.verified !== false && d.status !== "PENDING_VERIFICATION" };
+        });
+        for (const t of demoTeams) {
+          if (!supaIds.has(t.id)) merged.push(t);
+        }
+        return merged;
+      }
     } catch { /* fallback */ }
   }
   return demoTeams;
@@ -178,9 +199,15 @@ app.get("/api/dashboard/stats", async (_, res) => {
   const highPriority = incidentsList.filter(i => i.priority >= 60 && i.priority < 80).length;
   const inProgress = incidentsList.filter(i => i.status === "ASSIGNED" || i.status === "IN_PROGRESS").length;
   const resolved = incidentsList.filter(i => i.status === "RESOLVED").length;
-  const activeTeams = teamsList.filter(t => t.status === "AVAILABLE" || t.status === "DEPLOYED").length;
-  const totalPersonnel = teamsList.reduce((acc, t) => acc + (t.personnel || 0), 0);
+  const pendingTeamsCount = teamsList.filter(t => t.verified === false || t.status === "PENDING_VERIFICATION").length;
+  const activeTeams = teamsList.filter(t => t.verified !== false && (t.status === "AVAILABLE" || t.status === "DEPLOYED")).length;
+  const totalPersonnel = teamsList.filter(t => t.verified !== false).reduce((acc, t) => acc + (t.personnel || 0), 0);
   const livesAssisted = incidentsList.reduce((acc, i) => acc + (i.people || 1), 0) + 142;
+
+  // Merge any pending verification notifications into recentActivity
+  const pendingNotifs = adminNotifications
+    .filter(n => n.actionRequired)
+    .map(n => ({ id: n.id, title: n.title, time: "Pending Admin Approval", type: "verification_alert" }));
 
   res.json({
     summary: {
@@ -190,13 +217,15 @@ app.get("/api/dashboard/stats", async (_, res) => {
       inProgress,
       resolved,
       activeTeams,
+      pendingTeamsCount,
       totalPersonnel,
       livesAssisted,
       avgResponseMinutes: "7.8 mins",
       triageAccuracy: "94.6%",
-      systemStatus: "OPTIMAL • DISPATCH READY"
+      systemStatus: pendingTeamsCount > 0 ? "ACTION REQUIRED • PENDING SQUAD CLEARANCE" : "OPTIMAL • DISPATCH READY"
     },
     recentActivity: [
+      ...pendingNotifs,
       { id: "EVT-1", title: "Heavy Inflow Warning issued for Hooghly Basin", time: "12m ago", type: "alert" },
       { id: "EVT-2", title: "Team T-101 (Rapid Relief) deployed to INC-1042", time: "28m ago", type: "dispatch" },
       { id: "EVT-3", title: "INC-1051 triage upgraded to Priority 84", time: "45m ago", type: "incident" },
@@ -617,11 +646,17 @@ app.post("/api/resources", (req, res) => {
 });
 
 // ──────────────────────────────────────────────
-// 5. RESCUE TEAMS MANAGEMENT
+// 5. RESCUE TEAMS MANAGEMENT & VERIFICATION WORKFLOW
 // ──────────────────────────────────────────────
 app.get("/api/teams", async (req, res) => {
   let list = await getActiveTeams();
-  const { type, status } = req.query;
+  const { type, status, includePending } = req.query;
+
+  // By default, only include verified squads unless specifically requested (e.g. by Admin console)
+  if (includePending !== "true" && includePending !== "1") {
+    list = list.filter(t => t.verified !== false && t.status !== "PENDING_VERIFICATION");
+  }
+
   if (type && type !== "ALL") {
     list = list.filter(t => (t.type || "").toUpperCase() === type.toUpperCase());
   }
@@ -631,8 +666,15 @@ app.get("/api/teams", async (req, res) => {
   res.json(list);
 });
 
+// Admin-only view to get ALL teams including pending approvals
+app.get("/api/admin/teams/all", async (_, res) => {
+  const list = await getActiveTeams();
+  res.json(list);
+});
+
 app.post("/api/teams", async (req, res) => {
   const body = req.body;
+  // New squads require admin verification before operational dispatch
   const newTeam = {
     id: "T-" + (105 + demoTeams.length),
     name: body.name || "Squad " + (demoTeams.length + 1),
@@ -644,18 +686,112 @@ app.post("/api/teams", async (req, res) => {
     personnel: Number(body.personnel) || 8,
     skills: body.skills || ["Medical", "Search & Rescue"],
     equipment: body.equipment || ["Medical Kit", "Rescue Vehicle"],
-    status: body.status || "AVAILABLE"
+    status: "PENDING_VERIFICATION",
+    verified: false,
+    createdAt: new Date().toISOString()
   };
+
+  // Create an explicit notification for the State Command Admin
+  const notif = {
+    id: "NOTIF-" + Date.now(),
+    type: "RESCUE_TEAM_VERIFICATION",
+    title: `New Rescue Unit Awaiting Verification: ${newTeam.name}`,
+    message: `A new ${newTeam.type} squad (${newTeam.personnel} responders, Phone: ${newTeam.phone}) has requested operational deployment. Admin verification is required before field dispatch.`,
+    teamId: newTeam.id,
+    teamName: newTeam.name,
+    createdAt: new Date().toISOString(),
+    read: false,
+    actionRequired: true
+  };
+  adminNotifications.unshift(notif);
+
+  // Always register in demoTeams so it is instantly available across all queries
+  demoTeams.push(newTeam);
 
   if (supabaseAdmin) {
     try {
-      const { data, error } = await supabaseAdmin.from("teams").insert([newTeam]).select().single();
-      if (!error && data) return res.status(201).json(data);
+      await supabaseAdmin.from("teams").insert([{
+        id: newTeam.id,
+        name: newTeam.name,
+        type: newTeam.type,
+        lat: newTeam.lat,
+        lng: newTeam.lng,
+        phone: newTeam.phone,
+        readiness: newTeam.readiness,
+        personnel: newTeam.personnel,
+        skills: newTeam.skills,
+        equipment: newTeam.equipment,
+        status: newTeam.status
+      }]);
     } catch { /* fallback */ }
   }
 
-  demoTeams.push(newTeam);
-  res.status(201).json(newTeam);
+  res.status(201).json({ team: newTeam, notification: notif, pendingApproval: true });
+});
+
+// Admin verification endpoint: approve or decline rescue squad
+app.patch("/api/teams/:id/verify", async (req, res) => {
+  const { id } = req.params;
+  const { approved } = req.body; // boolean: true to approve, false to decline
+
+  if (supabaseAdmin) {
+    try {
+      if (approved) {
+        await supabaseAdmin.from("teams").update({ status: "AVAILABLE" }).eq("id", id);
+      } else {
+        await supabaseAdmin.from("teams").delete().eq("id", id);
+      }
+    } catch (err) {
+      console.error("Supabase team verify error:", err);
+    }
+  }
+
+  let idx = demoTeams.findIndex(t => t.id === id);
+  let updatedTeam = null;
+
+  if (idx !== -1) {
+    if (approved) {
+      demoTeams[idx].verified = true;
+      demoTeams[idx].status = "AVAILABLE";
+      updatedTeam = demoTeams[idx];
+    } else {
+      demoTeams.splice(idx, 1);
+    }
+  } else if (approved) {
+    // If not found in demoTeams but exists in Supabase
+    updatedTeam = { id, verified: true, status: "AVAILABLE" };
+    demoTeams.push(updatedTeam);
+  }
+
+  // Mark pending notification as resolved
+  const relatedNotif = adminNotifications.find(n => n.teamId === id);
+  if (relatedNotif) {
+    relatedNotif.read = true;
+    relatedNotif.status = approved ? "APPROVED" : "DECLINED";
+    relatedNotif.actionRequired = false;
+  }
+
+  // Record audit resolution event
+  adminNotifications.unshift({
+    id: "NOTIF-" + Date.now(),
+    type: "VERIFICATION_LOG",
+    title: approved ? `Squad ${id} Verified & Activated` : `Squad ${id} Registration Declined`,
+    message: approved
+      ? `Unit "${updatedTeam?.name || id}" has been verified by Admin and is now ready for emergency dispatch.`
+      : `Registration request for unit ${id} was rejected by Command Admin.`,
+    createdAt: new Date().toISOString(),
+    read: true,
+    actionRequired: false
+  });
+
+  res.json({
+    ok: true,
+    approved,
+    team: updatedTeam,
+    message: approved
+      ? "Rescue unit verified and activated successfully!"
+      : "Rescue unit registration declined."
+  });
 });
 
 app.patch("/api/teams/:id", async (req, res) => {
@@ -678,6 +814,20 @@ app.patch("/api/teams/:id", async (req, res) => {
   if (!team) return res.status(404).json({ error: "Team not found" });
   Object.assign(team, updates);
   res.json(team);
+});
+
+// Admin Notifications API
+app.get("/api/admin/notifications", (_, res) => {
+  res.json({
+    notifications: adminNotifications,
+    unreadCount: adminNotifications.filter(n => !n.read).length,
+    pendingActionCount: adminNotifications.filter(n => n.actionRequired).length
+  });
+});
+
+app.patch("/api/admin/notifications/mark-read", (_, res) => {
+  adminNotifications.forEach(n => { n.read = true; });
+  res.json({ ok: true });
 });
 
 // ──────────────────────────────────────────────
