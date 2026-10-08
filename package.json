@@ -1,0 +1,8 @@
+{
+  "name": "resqsense-project",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "build": "npm --prefix RESQSENSE run build"
+  }
+}

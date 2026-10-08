@@ -1,0 +1,15 @@
+{
+  "version": 2,
+  "buildCommand": "cd RESQSENSE && npm install && npm run build",
+  "outputDirectory": "RESQSENSE/frontend/dist",
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
