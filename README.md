@@ -480,7 +480,7 @@ RESQSENSE should follow secure application practices including:
 - React
 - Vite
 - JavaScript
-- HTML5
+- HTML
 - CSS
 - Interactive map technology
 
