@@ -1,5 +1,21 @@
+/**
+ * ResQSense Backend API
+ * =====================
+ * Express REST API for incident management, team dispatch, triage scoring,
+ * and weather intelligence.
+ *
+ * Authentication: Handled by Supabase Auth (frontend + Supabase directly).
+ * Data Persistence: When SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are set,
+ *                   incidents and teams are read/written to Supabase DB.
+ *                   Otherwise falls back to in-memory demo data.
+ */
+
 const express = require("express");
 const cors = require("cors");
+
+// Load .env from the RESQSENSE root (one level up from backend/)
+const path = require("path");
+require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -7,23 +23,64 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-const teams = [
+// ──────────────────────────────────────────────
+// SUPABASE CLIENTS (Admin & Anon)
+// ──────────────────────────────────────────────
+let supabaseAdmin = null;
+let supabaseAnon = null;
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+
+const isSupabaseConfigured =
+  SUPABASE_URL &&
+  SUPABASE_URL !== "https://your-project-id.supabase.co" &&
+  SUPABASE_SERVICE_ROLE_KEY &&
+  SUPABASE_SERVICE_ROLE_KEY !== "your-service-role-secret-key-here";
+
+if (isSupabaseConfigured) {
+  try {
+    const { createClient } = require("@supabase/supabase-js");
+    supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+    if (SUPABASE_ANON_KEY) {
+      supabaseAnon = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false }
+      });
+    }
+    console.log("✅ Supabase backend client initialized.");
+  } catch (err) {
+    console.warn("⚠️  Supabase initialization failed:", err.message);
+  }
+} else {
+  console.log("ℹ️  Supabase not configured. Running in demo / in-memory mode.");
+  console.log("   Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to .env to enable persistence.");
+}
+
+// ──────────────────────────────────────────────
+// IN-MEMORY DEMO DATA (fallback when no Supabase)
+// ──────────────────────────────────────────────
+const demoTeams = [
   { id:"T-101", name:"Rapid Relief Foundation", type:"NGO", lat:22.5726, lng:88.3639, phone:"+91-00000-00001", readiness:94, personnel:8, skills:["Flood","Medical","Search & Rescue"], equipment:["Boat","Medical Kit"], status:"AVAILABLE" },
   { id:"T-102", name:"District Emergency Response Unit", type:"GOVERNMENT", lat:22.585, lng:88.37, phone:"+91-00000-00002", readiness:97, personnel:12, skills:["Flood","Search & Rescue","Earthquake"], equipment:["Boat","Ambulance"], status:"AVAILABLE" },
   { id:"T-103", name:"Community Rescue Network", type:"NGO", lat:22.56, lng:88.35, phone:"+91-00000-00003", readiness:88, personnel:6, skills:["Medical","Fire"], equipment:["Medical Kit","Rescue Vehicle"], status:"AVAILABLE" },
   { id:"T-104", name:"Urban Search & Rescue Cell", type:"GOVERNMENT", lat:22.59, lng:88.39, phone:"+91-00000-00004", readiness:91, personnel:10, skills:["Earthquake","Landslide","Search & Rescue"], equipment:["Rescue Vehicle","Medical Kit"], status:"AVAILABLE" }
 ];
 
-let incidents = [
-  { id:"INC-1042", type:"Flood", lat:22.5726, lng:88.3639, priority:92, confidence:87, people:12, medical:true, status:"VERIFIED", assignedTeam:"T-101" },
-  { id:"INC-1047", type:"Landslide", lat:22.59, lng:88.39, priority:88, confidence:91, people:8, medical:false, status:"PRIORITIZED", assignedTeam:null },
-  { id:"INC-1051", type:"Earthquake", lat:22.56, lng:88.35, priority:84, confidence:79, people:20, medical:true, status:"REPORTED", assignedTeam:null },
-  { id:"INC-1054", type:"Heavy Rain", lat:22.61, lng:88.36, priority:58, confidence:83, people:5, medical:false, status:"REPORTED", assignedTeam:null }
+let demoIncidents = [
+  { id:"INC-1042", type:"Flood", lat:22.5726, lng:88.3639, priority:92, confidence:87, people:12, medical:true, status:"VERIFIED", assignedTeam:"T-101", createdAt: new Date().toISOString() },
+  { id:"INC-1047", type:"Landslide", lat:22.59, lng:88.39, priority:88, confidence:91, people:8, medical:false, status:"PRIORITIZED", assignedTeam:null, createdAt: new Date().toISOString() },
+  { id:"INC-1051", type:"Earthquake", lat:22.56, lng:88.35, priority:84, confidence:79, people:20, medical:true, status:"REPORTED", assignedTeam:null, createdAt: new Date().toISOString() },
+  { id:"INC-1054", type:"Heavy Rain", lat:22.61, lng:88.36, priority:58, confidence:83, people:5, medical:false, status:"REPORTED", assignedTeam:null, createdAt: new Date().toISOString() }
 ];
 
+// ──────────────────────────────────────────────
+// PRIORITY SCORING ENGINE
+// ──────────────────────────────────────────────
 function priorityScore(a) {
   const hazard = { Flood:30, Landslide:30, Earthquake:30, Fire:28, Cyclone:30, "Heavy Rain":18 }[a.disaster] || 20;
-  const people = Math.min(20, a.people > 20 ? 20 : a.people);
+  const people = Math.min(20, a.people > 20 ? 20 : (a.people || 1));
   const medical = a.medical === "life" ? 15 : a.medical === "serious" ? 12 : a.medical ? 8 : 0;
   const trapped = a.trapped === "5+" ? 15 : a.trapped === "3-5" ? 12 : a.trapped === "1-2" ? 7 : 0;
   const access = a.access === "blocked" ? 10 : a.access === "partial" ? 6 : 2;
@@ -38,70 +95,685 @@ function distanceKm(lat1, lon1, lat2, lon2) {
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-app.get("/api/health", (_,res)=>res.json({ok:true, service:"RESQSENSE API", mode:"DEMO"}));
-app.get("/api/incidents", (_,res)=>res.json(incidents));
-app.get("/api/teams", (_,res)=>res.json(teams));
+const demoCenter = [22.5726, 88.3639];
 
-app.get("/api/weather", async (req,res)=>{
-  const {lat,lng}=req.query;
+// ──────────────────────────────────────────────
+// API ROUTES
+// ──────────────────────────────────────────────
+
+app.get("/api/health", (_,res) => res.json({
+  ok: true,
+  service: "RESQSENSE API",
+  mode: isSupabaseConfigured ? "SUPABASE" : "DEMO",
+  supabase: isSupabaseConfigured
+}));
+
+// ──────────────────────────────────────────────
+// IN-MEMORY RESOURCE & LOGISTICS DATA
+// ──────────────────────────────────────────────
+let demoResources = [
+  { id: "RES-01", name: "Ambulances & Rapid Evacuation Vans", category: "Transport", depot: "Central Command Base Alpha", total: 32, deployed: 24, available: 8, status: "IN_USE", unit: "Vehicles" },
+  { id: "RES-02", name: "Inflatable Rescue Boats & Rafts", category: "Water Rescue", depot: "Riverfront Staging Base", total: 18, deployed: 13, available: 5, status: "HIGH_DEMAND", unit: "Boats" },
+  { id: "RES-03", name: "Trauma & Advanced First-Aid Medical Kits", category: "Medical", depot: "Apex Medical Depository", total: 420, deployed: 310, available: 110, status: "OPTIMAL", unit: "Kits" },
+  { id: "RES-04", name: "Hydraulic Cutters & Earth Excavators", category: "Heavy Equipment", depot: "State Infrastructure Hub", total: 14, deployed: 9, available: 5, status: "OPTIMAL", unit: "Machines" },
+  { id: "RES-05", name: "Thermal Aerial Recon Drones", category: "Aviation", depot: "NDRF Aerial Surveillance Unit", total: 20, deployed: 16, available: 4, status: "HIGH_DEMAND", unit: "Drones" },
+  { id: "RES-06", name: "Emergency Food & Clean Water Rations", category: "Relief Supplies", depot: "Central Relief Logistics Depot", total: 3000, deployed: 2150, available: 850, status: "OPTIMAL", unit: "Ration Packs" },
+  { id: "RES-07", name: "Industrial De-Watering Pumps", category: "Flood Mitigation", depot: "Drainage Control Depot", total: 26, deployed: 21, available: 5, status: "CRITICAL", unit: "Pumps" },
+  { id: "RES-08", name: "All-Weather Emergency Shelter Tents", category: "Relief Supplies", depot: "Disaster Preparedness Depot", total: 400, deployed: 260, available: 140, status: "OPTIMAL", unit: "Tents" }
+];
+
+let demoAllocations = [
+  { id: "ALC-101", resourceId: "RES-01", resourceName: "Ambulances & Rapid Evacuation Vans", quantity: 4, incidentId: "INC-1042", teamId: "T-101", timestamp: new Date(Date.now() - 3600000).toISOString(), status: "DISPATCHED" },
+  { id: "ALC-102", resourceId: "RES-02", resourceName: "Inflatable Rescue Boats & Rafts", quantity: 2, incidentId: "INC-1042", teamId: "T-101", timestamp: new Date(Date.now() - 2800000).toISOString(), status: "EN_ROUTE" },
+  { id: "ALC-103", resourceId: "RES-05", resourceName: "Thermal Aerial Recon Drones", quantity: 2, incidentId: "INC-1047", teamId: "T-104", timestamp: new Date(Date.now() - 1400000).toISOString(), status: "ACTIVE" }
+];
+
+const demoEvacuationZones = [
+  { id: "EVAC-01", name: "Red Cross Central Relief Shelter", lat: 22.565, lng: 88.372, capacity: 600, occupied: 185, status: "OPEN", facilities: ["Medical Clinic", "Clean Water", "Hot Meals"] },
+  { id: "EVAC-02", name: "Salt Lake Multi-Purpose Indoor Stadium", lat: 22.582, lng: 88.405, capacity: 1200, occupied: 410, status: "OPEN", facilities: ["Power Backup", "Emergency Beds", "Helipad"] },
+  { id: "EVAC-03", name: "District College Safe Haven Camp", lat: 22.552, lng: 88.342, capacity: 450, occupied: 90, status: "OPEN", facilities: ["Shelter", "Child Care", "Security Post"] }
+];
+
+const demoDangerZones = [
+  { id: "DANGER-01", name: "Hooghly Riverfront Inundation Zone", lat: 22.578, lng: 88.355, risk: "CRITICAL", alert: "Flood surge level +1.9m above danger mark", radiusMeters: 1400 },
+  { id: "DANGER-02", name: "Eastern Ridge Unstable Slope", lat: 22.592, lng: 88.398, risk: "HIGH", alert: "Active soil liquefaction & rockfall hazard", radiusMeters: 900 }
+];
+
+const demoHospitals = [
+  { id: "HOSP-01", name: "Apex Trauma & Emergency Disaster Hospital", lat: 22.568, lng: 88.361, beds: 64, availableBeds: 18, traumaReady: true, phone: "+91-33-2200-1122" },
+  { id: "HOSP-02", name: "Metro General Government Hospital", lat: 22.589, lng: 88.378, beds: 120, availableBeds: 34, traumaReady: true, phone: "+91-33-2200-4455" }
+];
+
+// Helper to get active incidents list (Supabase or memory)
+async function getActiveIncidents() {
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin.from("incidents").select("*").order("priority", { ascending: false });
+      if (!error && data?.length) return data;
+    } catch { /* fallback */ }
+  }
+  return demoIncidents;
+}
+
+// Helper to get active teams list (Supabase or memory)
+async function getActiveTeams() {
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin.from("teams").select("*").order("readiness", { ascending: false });
+      if (!error && data?.length) return data;
+    } catch { /* fallback */ }
+  }
+  return demoTeams;
+}
+
+// ──────────────────────────────────────────────
+// 1. DASHBOARD OVERVIEW STATS ENDPOINT
+// ──────────────────────────────────────────────
+app.get("/api/dashboard/stats", async (_, res) => {
+  const incidentsList = await getActiveIncidents();
+  const teamsList = await getActiveTeams();
+
+  const totalIncidents = incidentsList.length;
+  const criticalIncidents = incidentsList.filter(i => i.priority >= 80).length;
+  const highPriority = incidentsList.filter(i => i.priority >= 60 && i.priority < 80).length;
+  const inProgress = incidentsList.filter(i => i.status === "ASSIGNED" || i.status === "IN_PROGRESS").length;
+  const resolved = incidentsList.filter(i => i.status === "RESOLVED").length;
+  const activeTeams = teamsList.filter(t => t.status === "AVAILABLE" || t.status === "DEPLOYED").length;
+  const totalPersonnel = teamsList.reduce((acc, t) => acc + (t.personnel || 0), 0);
+  const livesAssisted = incidentsList.reduce((acc, i) => acc + (i.people || 1), 0) + 142;
+
   res.json({
-    mode:"DEMO",
-    location:{lat:Number(lat)||0,lng:Number(lng)||0},
-    current:{temperature:29, humidity:78, wind:14, rainfall:18, condition:"Heavy Rain"},
-    alerts:["Heavy rainfall possible in the selected area"]
-  });
-});
-
-app.get("/api/teams/nearby", (req,res)=>{
-  const lat=Number(req.query.lat), lng=Number(req.query.lng);
-  if(!Number.isFinite(lat)||!Number.isFinite(lng)) return res.status(400).json({error:"Valid coordinates required"});
-  const result=teams.map(t=>({...t,distance:Number(distanceKm(lat,lng,t.lat,t.lng).toFixed(2)),eta:Math.max(5,Math.round(distanceKm(lat,lng,t.lat,t.lng)*5))}))
-    .sort((a,b)=>a.distance-b.distance);
-  res.json(result);
-});
-
-app.post("/api/triage",(req,res)=>{
-  const score=priorityScore(req.body);
-  const severity=score>=80?"CRITICAL":score>=60?"HIGH":score>=30?"MEDIUM":"LOW";
-  const confidence= req.body.disaster && req.body.people ? 82 : 65;
-  res.json({
-    priority:score,
-    severity,
-    confidence,
-    reasons:[
-      req.body.people>5?"Multiple people affected":"Limited people reported",
-      req.body.medical?"Medical urgency reported":"No medical urgency reported",
-      req.body.access==="blocked"?"Access is blocked":"Access appears possible"
+    summary: {
+      totalIncidents,
+      criticalIncidents,
+      highPriority,
+      inProgress,
+      resolved,
+      activeTeams,
+      totalPersonnel,
+      livesAssisted,
+      avgResponseMinutes: "7.8 mins",
+      triageAccuracy: "94.6%",
+      systemStatus: "OPTIMAL • DISPATCH READY"
+    },
+    recentActivity: [
+      { id: "EVT-1", title: "Heavy Inflow Warning issued for Hooghly Basin", time: "12m ago", type: "alert" },
+      { id: "EVT-2", title: "Team T-101 (Rapid Relief) deployed to INC-1042", time: "28m ago", type: "dispatch" },
+      { id: "EVT-3", title: "INC-1051 triage upgraded to Priority 84", time: "45m ago", type: "incident" },
+      { id: "EVT-4", title: "Relief Shelter Alpha reached 30% occupancy", time: "1h ago", type: "shelter" }
     ],
-    required:{personnel: score>=80?6:score>=60?4:2, resources: score>=80?["Medical Kit","Rescue Vehicle"]:["Basic Rescue Kit"]}
+    weatherAlert: {
+      condition: "Precipitation Inundation Alert",
+      rainfall: "24 mm/hr",
+      wind: "38 km/h",
+      threatLevel: "ELEVATED"
+    }
   });
 });
 
-app.post("/api/incidents",(req,res)=>{
-  const body=req.body;
-  const score=priorityScore(body);
-  const incident={
-    id:"INC-"+(1060+incidents.length),
-    type:body.disaster||"Other",
-    lat:Number(body.lat)||null,
-    lng:Number(body.lng)||null,
-    priority:score,
-    confidence:82,
-    people:Number(body.people)||1,
-    medical:Boolean(body.medical),
-    status:"REPORTED",
-    assignedTeam:null
+// ──────────────────────────────────────────────
+// 2. INCIDENTS CRUD & QUEUE MANAGEMENT
+// ──────────────────────────────────────────────
+app.get("/api/incidents", async (req, res) => {
+  let list = await getActiveIncidents();
+  const { status, type, priority, search } = req.query;
+
+  if (status && status !== "ALL") {
+    list = list.filter(i => (i.status || "").toUpperCase() === status.toUpperCase());
+  }
+  if (type && type !== "ALL") {
+    list = list.filter(i => (i.type || "").toLowerCase().includes(type.toLowerCase()));
+  }
+  if (priority === "CRITICAL") {
+    list = list.filter(i => i.priority >= 80);
+  } else if (priority === "HIGH") {
+    list = list.filter(i => i.priority >= 60);
+  }
+  if (search) {
+    const q = search.toLowerCase();
+    list = list.filter(i => (i.id || "").toLowerCase().includes(q) || (i.type || "").toLowerCase().includes(q));
+  }
+
+  res.json(list);
+});
+
+app.post("/api/incidents", async (req, res) => {
+  const body = req.body;
+  const score = priorityScore(body);
+  const incident = {
+    id: "INC-" + (1060 + Math.floor(Math.random() * 900)),
+    type: body.disaster || body.type || "Other",
+    lat: Number(body.lat) || (demoCenter[0] + (Math.random() - 0.5) * 0.08),
+    lng: Number(body.lng) || (demoCenter[1] + (Math.random() - 0.5) * 0.08),
+    priority: body.priority || score,
+    confidence: body.confidence || 85,
+    people: Number(body.people) || 1,
+    medical: Boolean(body.medical),
+    status: "REPORTED",
+    assignedTeam: null,
+    createdAt: new Date().toISOString()
   };
-  incidents.unshift(incident);
+
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin.from("incidents").insert([incident]).select().single();
+      if (!error && data) return res.status(201).json(data);
+    } catch { /* ignore */ }
+  }
+
+  demoIncidents.unshift(incident);
   res.status(201).json(incident);
 });
 
-app.post("/api/incidents/:id/assign",(req,res)=>{
-  const incident=incidents.find(i=>i.id===req.params.id);
-  if(!incident) return res.status(404).json({error:"Incident not found"});
-  incident.assignedTeam=req.body.teamId||null;
-  incident.status="ASSIGNED";
+app.patch("/api/incidents/:id", async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from("incidents")
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+      if (!error && data) return res.json(data);
+    } catch { /* fallback */ }
+  }
+
+  const idx = demoIncidents.findIndex(i => i.id === id);
+  if (idx === -1) return res.status(404).json({ error: "Incident not found" });
+  demoIncidents[idx] = { ...demoIncidents[idx], ...updates };
+  res.json(demoIncidents[idx]);
+});
+
+app.post("/api/incidents/:id/assign", async (req, res) => {
+  const { id } = req.params;
+  const { teamId } = req.body;
+
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from("incidents")
+        .update({ assignedTeam: teamId, status: "ASSIGNED" })
+        .eq("id", id)
+        .select()
+        .single();
+      if (!error && data) return res.json(data);
+    } catch { /* ignore */ }
+  }
+
+  const incident = demoIncidents.find(i => i.id === id);
+  if (!incident) return res.status(404).json({ error: "Incident not found" });
+  incident.assignedTeam = teamId || null;
+  incident.status = "ASSIGNED";
   res.json(incident);
 });
 
-app.listen(PORT,()=>console.log(`RESQSENSE API running on http://localhost:${PORT}`));
+app.delete("/api/incidents/:id", async (req, res) => {
+  const { id } = req.params;
+  if (supabaseAdmin) {
+    try {
+      await supabaseAdmin.from("incidents").delete().eq("id", id);
+    } catch { /* ignore */ }
+  }
+  demoIncidents = demoIncidents.filter(i => i.id !== id);
+  res.json({ ok: true, deleted: id });
+});
+
+// ──────────────────────────────────────────────
+// 3. CONTROL MAP SITUATIONAL INTELLIGENCE
+// ──────────────────────────────────────────────
+app.get("/api/control-map", async (_, res) => {
+  const incidentsList = await getActiveIncidents();
+  const teamsList = await getActiveTeams();
+
+  res.json({
+    center: demoCenter,
+    zoom: 12,
+    incidents: incidentsList.map(i => ({
+      ...i,
+      severity: i.priority >= 80 ? "CRITICAL" : i.priority >= 60 ? "HIGH" : i.priority >= 30 ? "MEDIUM" : "LOW"
+    })),
+    teams: teamsList,
+    evacuationZones: demoEvacuationZones,
+    dangerZones: demoDangerZones,
+    hospitals: demoHospitals,
+    layers: {
+      heatmap: true,
+      rescueBases: true,
+      safeShelters: true,
+      dangerZones: true
+    }
+  });
+});
+
+// ──────────────────────────────────────────────
+// 4. RESOURCE ALLOCATION & LOGISTICS
+// ──────────────────────────────────────────────
+app.get("/api/resources", (_, res) => {
+  const totalItems = demoResources.reduce((acc, r) => acc + r.total, 0);
+  const totalDeployed = demoResources.reduce((acc, r) => acc + r.deployed, 0);
+  const totalAvailable = demoResources.reduce((acc, r) => acc + r.available, 0);
+
+  res.json({
+    summary: {
+      totalItems,
+      totalDeployed,
+      totalAvailable,
+      utilizationRate: Math.round((totalDeployed / totalItems) * 100) + "%"
+    },
+    resources: demoResources,
+    allocations: demoAllocations
+  });
+});
+
+app.post("/api/resources/allocate", (req, res) => {
+  const { resourceId, quantity, incidentId, teamId, requestedBy } = req.body;
+  if (!resourceId || !quantity) {
+    return res.status(400).json({ error: "resourceId and quantity are required" });
+  }
+
+  const resource = demoResources.find(r => r.id === resourceId);
+  if (!resource) return res.status(404).json({ error: "Resource not found" });
+
+  const qty = Number(quantity);
+  if (qty > resource.available) {
+    return res.status(400).json({ error: `Insufficient stock. Only ${resource.available} units available.` });
+  }
+
+  resource.available -= qty;
+  resource.deployed += qty;
+  if (resource.available <= 3) resource.status = "CRITICAL";
+  else if (resource.available <= 8) resource.status = "HIGH_DEMAND";
+
+  const newAllocation = {
+    id: "ALC-" + (104 + demoAllocations.length),
+    resourceId,
+    resourceName: resource.name,
+    quantity: qty,
+    incidentId: incidentId || "FIELD_DISPATCH",
+    teamId: teamId || "CENTRAL_RESPONSE",
+    requestedBy: requestedBy || "State Command Dispatcher",
+    timestamp: new Date().toISOString(),
+    status: "DISPATCHED"
+  };
+
+  demoAllocations.unshift(newAllocation);
+  res.status(201).json({ allocation: newAllocation, updatedResource: resource });
+});
+
+app.post("/api/resources", (req, res) => {
+  const { name, category, depot, total, unit } = req.body;
+  if (!name || !category || !total) {
+    return res.status(400).json({ error: "name, category, and total count are required" });
+  }
+  const count = Number(total);
+  const newRes = {
+    id: "RES-" + (demoResources.length + 10).toString().padStart(2, "0"),
+    name,
+    category,
+    depot: depot || "Central Base",
+    total: count,
+    deployed: 0,
+    available: count,
+    status: "OPTIMAL",
+    unit: unit || "Units"
+  };
+  demoResources.push(newRes);
+  res.status(201).json(newRes);
+});
+
+// ──────────────────────────────────────────────
+// 5. RESCUE TEAMS MANAGEMENT
+// ──────────────────────────────────────────────
+app.get("/api/teams", async (req, res) => {
+  let list = await getActiveTeams();
+  const { type, status } = req.query;
+  if (type && type !== "ALL") {
+    list = list.filter(t => (t.type || "").toUpperCase() === type.toUpperCase());
+  }
+  if (status && status !== "ALL") {
+    list = list.filter(t => (t.status || "").toUpperCase() === status.toUpperCase());
+  }
+  res.json(list);
+});
+
+app.post("/api/teams", async (req, res) => {
+  const body = req.body;
+  const newTeam = {
+    id: "T-" + (105 + demoTeams.length),
+    name: body.name || "Squad " + (demoTeams.length + 1),
+    type: body.type || "NGO",
+    lat: Number(body.lat) || (demoCenter[0] + (Math.random() - 0.5) * 0.05),
+    lng: Number(body.lng) || (demoCenter[1] + (Math.random() - 0.5) * 0.05),
+    phone: body.phone || "+91-98000-00000",
+    readiness: Number(body.readiness) || 95,
+    personnel: Number(body.personnel) || 8,
+    skills: body.skills || ["Medical", "Search & Rescue"],
+    equipment: body.equipment || ["Medical Kit", "Rescue Vehicle"],
+    status: body.status || "AVAILABLE"
+  };
+
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin.from("teams").insert([newTeam]).select().single();
+      if (!error && data) return res.status(201).json(data);
+    } catch { /* fallback */ }
+  }
+
+  demoTeams.push(newTeam);
+  res.status(201).json(newTeam);
+});
+
+app.patch("/api/teams/:id", async (req, res) => {
+  const { id } = req.params;
+  const updates = req.body;
+
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin
+        .from("teams")
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+      if (!error && data) return res.json(data);
+    } catch { /* fallback */ }
+  }
+
+  const team = demoTeams.find(t => t.id === id);
+  if (!team) return res.status(404).json({ error: "Team not found" });
+  Object.assign(team, updates);
+  res.json(team);
+});
+
+// ──────────────────────────────────────────────
+// 6. EMERGENCY ANALYTICS & METRICS
+// ──────────────────────────────────────────────
+app.get("/api/analytics", async (_, res) => {
+  const incidentsList = await getActiveIncidents();
+  const teamsList = await getActiveTeams();
+
+  // Breakdown by Hazard Type
+  const hazardCounts = {};
+  incidentsList.forEach(i => {
+    const t = i.type || "Other";
+    hazardCounts[t] = (hazardCounts[t] || 0) + 1;
+  });
+
+  const hazardDistribution = Object.entries(hazardCounts).map(([type, count]) => ({
+    type,
+    count,
+    percentage: Math.round((count / (incidentsList.length || 1)) * 100)
+  })).sort((a, b) => b.count - a.count);
+
+  // Priority Breakdown
+  const priorityBreakdown = [
+    { label: "Critical Urgency (80-100)", count: incidentsList.filter(i => i.priority >= 80).length, color: "#ef4444" },
+    { label: "High Urgency (60-79)", count: incidentsList.filter(i => i.priority >= 60 && i.priority < 80).length, color: "#f59e0b" },
+    { label: "Moderate Risk (30-59)", count: incidentsList.filter(i => i.priority >= 30 && i.priority < 60).length, color: "#3b82f6" },
+    { label: "Low Urgency (<30)", count: incidentsList.filter(i => i.priority < 30).length, color: "#10b981" }
+  ];
+
+  // Response Time Benchmarks
+  const responseBenchmarks = {
+    avgAlertToTriage: "1.2 mins",
+    avgTriageToDispatch: "3.4 mins",
+    avgArrivalOnScene: "11.2 mins",
+    avgEvacuationCompletion: "34.0 mins"
+  };
+
+  // District Risk Vulnerability Index
+  const districtVulnerability = [
+    { district: "Central Riverfront Corridor", riskLevel: "CRITICAL", index: 94, incidents: 14, popDensity: "Very High" },
+    { district: "Eastern Basin & Wetlands", riskLevel: "HIGH", index: 82, incidents: 9, popDensity: "High" },
+    { district: "North Industrial Belt", riskLevel: "MEDIUM", index: 58, incidents: 5, popDensity: "Medium" },
+    { district: "South Suburb Sector", riskLevel: "LOW", index: 36, incidents: 3, popDensity: "Moderate" }
+  ];
+
+  res.json({
+    hazardDistribution,
+    priorityBreakdown,
+    responseBenchmarks,
+    districtVulnerability,
+    totals: {
+      totalReported: incidentsList.length,
+      criticalCount: incidentsList.filter(i => i.priority >= 80).length,
+      mobilizedPersonnel: teamsList.reduce((acc, t) => acc + (t.personnel || 0), 0),
+      survivalRate: "98.4%",
+      triageAccuracy: "94.6%"
+    }
+  });
+});
+
+// --- Teams Nearby ---
+app.get("/api/teams/nearby", async (req, res) => {
+  const lat = Number(req.query.lat), lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return res.status(400).json({ error: "Valid coordinates required" });
+
+  const teamsList = await getActiveTeams();
+  const result = teamsList
+    .map(t => ({ ...t, distance: Number(distanceKm(lat, lng, t.lat, t.lng).toFixed(2)), eta: Math.max(5, Math.round(distanceKm(lat, lng, t.lat, t.lng) * 5)) }))
+    .sort((a, b) => a.distance - b.distance);
+  res.json(result);
+});
+
+// --- Weather (demo/mock) ---
+app.get("/api/weather", async (req, res) => {
+  const { lat, lng } = req.query;
+  res.json({
+    mode: "DEMO",
+    location: { lat: Number(lat) || 0, lng: Number(lng) || 0 },
+    current: { temperature: 29, humidity: 78, wind: 14, rainfall: 18, condition: "Heavy Rain" },
+    alerts: ["Heavy rainfall possible in the selected area"]
+  });
+});
+
+// --- Triage scoring ---
+app.post("/api/triage", (req, res) => {
+  const score = priorityScore(req.body);
+  const severity = score >= 80 ? "CRITICAL" : score >= 60 ? "HIGH" : score >= 30 ? "MEDIUM" : "LOW";
+  const confidence = req.body.disaster && req.body.people ? 82 : 65;
+  res.json({
+    priority: score,
+    severity,
+    confidence,
+    reasons: [
+      req.body.people > 5 ? "Multiple people affected" : "Limited people reported",
+      req.body.medical ? "Medical urgency reported" : "No medical urgency reported",
+      req.body.access === "blocked" ? "Access is blocked" : "Access appears possible"
+    ],
+    required: {
+      personnel: score >= 80 ? 6 : score >= 60 ? 4 : 2,
+      resources: score >= 80 ? ["Medical Kit", "Rescue Vehicle"] : ["Basic Rescue Kit"]
+    }
+  });
+});
+
+// ──────────────────────────────────────────────
+// AUTHENTICATION ROUTES (SUPABASE + LOCAL FALLBACK)
+// ──────────────────────────────────────────────
+const fs = require("fs");
+const usersFile = path.join(__dirname, "users.json");
+
+function loadUsers() {
+  try {
+    if (fs.existsSync(usersFile)) return JSON.parse(fs.readFileSync(usersFile, "utf8"));
+  } catch { /* ignore */ }
+  return [];
+}
+function saveUsers(usersList) {
+  try { fs.writeFileSync(usersFile, JSON.stringify(usersList, null, 2), "utf8"); } catch { /* ignore */ }
+}
+
+app.post("/api/auth/register", async (req, res) => {
+  const { email, password, role, name, badgeId, agency } = req.body;
+  if (!email || !password || !role) {
+    return res.status(400).json({ error: "Email, password, and role are required." });
+  }
+  if (role !== "rescue" && role !== "admin") {
+    return res.status(400).json({ error: "Registration is restricted to 'rescue' and 'admin' roles." });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+  const userName = name?.trim() || (role === "admin" ? "State Dispatcher" : "Rescue Specialist");
+  const userBadge = badgeId?.trim() || ("BDG-" + Math.floor(1000 + Math.random() * 9000));
+  const userAgency = agency?.trim() || (role === "admin" ? "State Disaster Control Unit" : "District Emergency Response Unit");
+
+  // --- Supabase Auth Path ---
+  if (supabaseAdmin) {
+    try {
+      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+        email: cleanEmail,
+        password: password.trim(),
+        email_confirm: true, // AUTO-CONFIRM email so user can log in immediately
+        user_metadata: {
+          role,
+          name: userName,
+          badgeId: userBadge,
+          agency: userAgency
+        }
+      });
+
+      if (error) {
+        if (error.message.toLowerCase().includes("already") || error.code === "email_exists") {
+          return res.status(409).json({ error: "An account with this email already exists." });
+        }
+        return res.status(400).json({ error: error.message });
+      }
+
+      // Also ensure profile record is stored in public.user_profiles if the table exists
+      try {
+        await supabaseAdmin.from("user_profiles").upsert({
+          id: data.user.id,
+          email: cleanEmail,
+          role,
+          name: userName,
+          badge_id: userBadge,
+          agency: userAgency,
+          updated_at: new Date().toISOString()
+        });
+      } catch { /* table might not exist, metadata in auth.users is sufficient */ }
+
+      // Log in immediately to generate access token
+      let token = "supabase_token_" + Buffer.from(`${data.user.id}:${role}:${Date.now()}`).toString("base64");
+      if (supabaseAnon) {
+        try {
+          const signInRes = await supabaseAnon.auth.signInWithPassword({
+            email: cleanEmail,
+            password: password.trim()
+          });
+          if (signInRes.data?.session?.access_token) {
+            token = signInRes.data.session.access_token;
+          }
+        } catch { /* fallback to generated token */ }
+      }
+
+      const safeUser = {
+        id: data.user.id,
+        email: cleanEmail,
+        role,
+        name: userName,
+        badgeId: userBadge,
+        agency: userAgency,
+        createdAt: data.user.created_at
+      };
+
+      return res.status(201).json({ user: safeUser, token });
+    } catch (err) {
+      console.error("Supabase user registration error:", err);
+      return res.status(500).json({ error: err.message || "Registration failed on Supabase." });
+    }
+  }
+
+  // --- Local Fallback ---
+  let users = loadUsers();
+  const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
+  if (existing) return res.status(409).json({ error: "An account with this email already exists." });
+
+  const user = {
+    id: "USR-" + Date.now().toString().slice(-5),
+    email: cleanEmail,
+    password: password.trim(),
+    role,
+    name: userName,
+    badgeId: userBadge,
+    agency: userAgency,
+    createdAt: new Date().toISOString()
+  };
+  users.push(user);
+  saveUsers(users);
+
+  const token = "resqsense_jwt_" + Buffer.from(`${user.id}:${user.role}:${Date.now()}`).toString("base64");
+  const { password: _, ...safeUser } = user;
+  return res.status(201).json({ user: safeUser, token });
+});
+
+app.post("/api/auth/login", async (req, res) => {
+  const { email, password, role } = req.body;
+  if (!email || !password) return res.status(400).json({ error: "Please enter both email and password." });
+  const cleanEmail = email.trim().toLowerCase();
+
+  // --- Supabase Auth Path ---
+  if (supabaseAnon) {
+    try {
+      const { data, error } = await supabaseAnon.auth.signInWithPassword({
+        email: cleanEmail,
+        password: password.trim()
+      });
+
+      if (error) {
+        return res.status(401).json({ error: "Invalid credentials: " + error.message });
+      }
+
+      const userRole = data.user.user_metadata?.role || "rescue";
+      if (role && userRole !== role) {
+        return res.status(403).json({
+          error: `Access Denied: This account is authorized for '${userRole}' operations, not '${role}'.`
+        });
+      }
+
+      const safeUser = {
+        id: data.user.id,
+        email: cleanEmail,
+        role: userRole,
+        name: data.user.user_metadata?.name || cleanEmail.split("@")[0],
+        badgeId: data.user.user_metadata?.badgeId || "BDG-0000",
+        agency: data.user.user_metadata?.agency || "ResQSense",
+        createdAt: data.user.created_at
+      };
+
+      return res.json({ user: safeUser, token: data.session.access_token });
+    } catch (err) {
+      console.error("Supabase login error:", err);
+      return res.status(500).json({ error: err.message || "Login failed." });
+    }
+  }
+
+  // --- Local Fallback ---
+  let users = loadUsers();
+  const user = users.find(u => u.email.toLowerCase() === cleanEmail && u.password === password.trim());
+  if (!user) {
+    return res.status(401).json({
+      error: "Invalid credentials. No default credentials exist. Please register an official account first."
+    });
+  }
+  if (role && user.role !== role) {
+    return res.status(403).json({
+      error: `Access Denied: This account is authorized for '${user.role}' operations, not '${role}'.`
+    });
+  }
+
+  const token = "resqsense_jwt_" + Buffer.from(`${user.id}:${user.role}:${Date.now()}`).toString("base64");
+  const { password: _, ...safeUser } = user;
+  return res.json({ user: safeUser, token });
+});
+
+app.get("/api/auth/me", (req, res) => {
+  const token = req.headers.authorization?.replace("Bearer ", "");
+  if (!token) return res.status(401).json({ error: "Unauthorized" });
+  res.json({ ok: true });
+});
+
+app.listen(PORT, () => console.log(`RESQSENSE API running on http://localhost:${PORT} [${isSupabaseConfigured ? "Supabase" : "Demo"} mode]`));
