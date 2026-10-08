@@ -1741,3 +1741,31 @@ footer.app-footer {
   gap: 12px;
 }
 
+/* ─── SOS Evidence Upload Zone ─────────────────────────────── */
+.sos-upload-zone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 10px;
+  background: #f8fafc;
+  transition: all 0.2s ease;
+  overflow: hidden;
+  margin: 0 14px;
+}
+
+.sos-upload-zone:hover {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+
+.sos-upload-zone.drag-over {
+  border-color: #2563eb;
+  background: #dbeafe;
+  transform: scale(1.01);
+}
+
+.sos-upload-zone.has-image {
+  border-color: #10b981;
+  border-style: solid;
+  background: #f0fdf4;
+  padding: 10px;
+}
+

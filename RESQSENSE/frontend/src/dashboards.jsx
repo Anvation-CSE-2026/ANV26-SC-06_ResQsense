@@ -410,7 +410,18 @@ export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onA
                         Medical
                       </span>
                     )}
+                    {inc.imageDataUrl && (
+                      <span title="Has photo evidence" style={{ display: "inline-block", marginLeft: "4px", fontSize: "10px", background: "#fef3c7", color: "#92400e", padding: "2px 5px", borderRadius: "4px", cursor: "default" }}>
+                        📸
+                      </span>
+                    )}
+                    {inc.description && (
+                      <span title={inc.description} style={{ display: "inline-block", marginLeft: "4px", fontSize: "10px", background: "#ede9fe", color: "#5b21b6", padding: "2px 5px", borderRadius: "4px", cursor: "default" }}>
+                        💬
+                      </span>
+                    )}
                   </td>
+
                   <td>
                     <span className={`priority-tag ${inc.priority >= 80 ? "high" : inc.priority >= 60 ? "medium" : "low"}`}>
                       {inc.priority} / 100

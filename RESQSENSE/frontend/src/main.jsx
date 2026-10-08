@@ -37,8 +37,13 @@ import {
   Lock,
   LogOut,
   Key,
-  Database
+  Database,
+  Upload,
+  Camera,
+  ImageIcon,
+  Type
 } from "lucide-react";
+
 import "leaflet/dist/leaflet.css";
 import "./styles.css";
 import { loadHeatmapPlugin } from "./heatLayer.js";
@@ -444,10 +449,16 @@ function StatCard({ label, value, icon, variant = "blue", trend }) {
 }
 
 function Chatbot({ gps, onSOS, open, setOpen }) {
-  const [step, setStep] = useState(0);
+  const [step, setStep] = useState(0); // 0-4 = triage questions, 5 = media upload
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [description, setDescription] = useState("");
+  const [imageDataUrl, setImageDataUrl] = useState(null);
+  const [imageFileName, setImageFileName] = useState("");
+  const [uploadDragOver, setUploadDragOver] = useState(false);
+
+  const TOTAL_STEPS = 5; // 5 triage questions, then step 5 = media
 
   const questions = [
     { title: "What disaster or hazard are you facing?", options: ["Flood", "Landslide", "Earthquake", "Fire", "Heavy Rain", "Cyclone"] },
@@ -460,23 +471,38 @@ function Chatbot({ gps, onSOS, open, setOpen }) {
   async function handleAnswer(choice) {
     const nextAnswers = { ...answers, [step]: choice };
     setAnswers(nextAnswers);
-
     if (step < questions.length - 1) {
       setStep(step + 1);
-      return;
+    } else {
+      setStep(TOTAL_STEPS); // Go to media upload step
     }
+  }
 
+  function handleImageFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { alert("Please upload a valid image file (JPG, PNG, WEBP)."); return; }
+    if (file.size > 5 * 1024 * 1024) { alert("Image size must be under 5 MB."); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => { setImageDataUrl(e.target.result); setImageFileName(file.name); };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSubmitMedia() {
     setLoading(true);
-    const peopleCount = choice.includes("20+") ? 25 : choice.includes("6-20") ? 10 : choice.includes("2-5") ? 3 : 1;
-    const isMedical = nextAnswers[2]?.toLowerCase().includes("serious") || nextAnswers[2]?.toLowerCase().includes("life");
-    const accessStatus = nextAnswers[3]?.includes("Completely") ? "blocked" : nextAnswers[3]?.includes("Partially") ? "partial" : "yes";
+    const lastAnswer = answers[4];
+    const peopleCount = lastAnswer?.includes("20+") ? 25 : lastAnswer?.includes("6-20") ? 10 : lastAnswer?.includes("2-5") ? 3 : 1;
+    const isMedical = answers[2]?.toLowerCase().includes("serious") || answers[2]?.toLowerCase().includes("life");
+    const accessStatus = answers[3]?.includes("Completely") ? "blocked" : answers[3]?.includes("Partially") ? "partial" : "yes";
 
     const payload = {
-      disaster: nextAnswers[0],
-      trapped: nextAnswers[1]?.replace(" people", "").replace("No", "0"),
+      disaster: answers[0],
+      trapped: answers[1]?.replace(" people", "").replace("No", "0"),
       medical: isMedical,
       access: accessStatus,
-      people: peopleCount
+      people: peopleCount,
+      description: description.trim() || null,
+      imageDataUrl: imageDataUrl || null,
+      imageFileName: imageFileName || null
     };
 
     try {
@@ -489,9 +515,7 @@ function Chatbot({ gps, onSOS, open, setOpen }) {
       setResult({ ...data, payload });
     } catch {
       setResult({
-        priority: 85,
-        severity: "CRITICAL",
-        confidence: 84,
+        priority: 85, severity: "CRITICAL", confidence: 84,
         reasons: ["Urgent hazard assessment generated", "Responder alert prepared"],
         required: { personnel: 6, resources: ["Medical Kit", "Rescue Vehicle"] },
         payload
@@ -502,19 +526,13 @@ function Chatbot({ gps, onSOS, open, setOpen }) {
   }
 
   function resetChat() {
-    setStep(0);
-    setAnswers({});
-    setResult(null);
+    setStep(0); setAnswers({}); setResult(null);
+    setDescription(""); setImageDataUrl(null); setImageFileName("");
   }
 
   if (!open) {
     return (
-      <button
-        className="chat-circle-logo-trigger"
-        onClick={() => setOpen(true)}
-        aria-label="Open Emergency AI Assistant"
-        title="Emergency Assistant"
-      >
+      <button className="chat-circle-logo-trigger" onClick={() => setOpen(true)} aria-label="Open Emergency AI Assistant" title="Emergency Assistant">
         <div className="chat-circle-logo-inner">
           <MessageCircle size={26} />
           <div className="chat-online-badge"></div>
@@ -533,84 +551,162 @@ function Chatbot({ gps, onSOS, open, setOpen }) {
           </div>
           <div className="chat-header-info">
             <h4>Emergency Assistant AI</h4>
-            <small>5-step structured triage & responder dispatch</small>
+            <small>
+              {step < TOTAL_STEPS
+                ? `Step ${step + 1} of ${TOTAL_STEPS + 1} — Triage Questions`
+                : result ? "Triage Complete — Review & Dispatch"
+                : `Step ${TOTAL_STEPS + 1} of ${TOTAL_STEPS + 1} — Evidence Upload`}
+            </small>
           </div>
         </div>
-        <button className="chat-close-btn" onClick={() => setOpen(false)}>
-          <X size={15} />
-        </button>
+        <button className="chat-close-btn" onClick={() => setOpen(false)}><X size={15} /></button>
       </div>
 
-      {!result ? (
+      {/* STEPS 0-4: Triage Questions */}
+      {step < TOTAL_STEPS && !result && (
         <>
           <div className="chat-content-body">
             <div className="chat-bubble-bot">{questions[step].title}</div>
             <div className="chat-options-grid">
               {questions[step].options.map(opt => (
-                <button key={opt} className="chat-choice-btn" onClick={() => handleAnswer(opt)}>
-                  {opt}
-                </button>
+                <button key={opt} className="chat-choice-btn" onClick={() => handleAnswer(opt)}>{opt}</button>
               ))}
             </div>
           </div>
           <div className="chat-progress-indicator">
-            <span>Question {step + 1} of 5</span>
+            <span>Question {step + 1} of {TOTAL_STEPS + 1}</span>
             <div style={{ display: "flex", gap: "4px" }}>
-              {[0, 1, 2, 3, 4].map(idx => (
-                <div
-                  key={idx}
-                  style={{
-                    width: "8px",
-                    height: "8px",
-                    borderRadius: "50%",
-                    background: idx <= step ? "#10b981" : "#d1e7dd"
-                  }}
-                />
+              {[0, 1, 2, 3, 4, 5].map(idx => (
+                <div key={idx} style={{ width: "8px", height: "8px", borderRadius: "50%",
+                  background: idx < step ? "#10b981" : idx === step ? "#3b82f6" : "#d1e7dd" }} />
               ))}
             </div>
           </div>
         </>
-      ) : (
+      )}
+
+      {/* STEP 5: Media Evidence Upload + Free Text */}
+      {step === TOTAL_STEPS && !result && (
+        <div className="chat-content-body">
+          <div className="chat-bubble-bot" style={{ marginBottom: "14px" }}>
+            📸 Share a photo or describe your situation — this helps rescuers act faster and more accurately.
+          </div>
+
+          {/* Drag & Drop / Click Image Upload */}
+          <div
+            className={`sos-upload-zone${uploadDragOver ? " drag-over" : ""}${imageDataUrl ? " has-image" : ""}`}
+            onDragOver={e => { e.preventDefault(); setUploadDragOver(true); }}
+            onDragLeave={() => setUploadDragOver(false)}
+            onDrop={e => { e.preventDefault(); setUploadDragOver(false); handleImageFile(e.dataTransfer.files[0]); }}
+            onClick={() => document.getElementById("sos-file-input").click()}
+            style={{ cursor: "pointer" }}
+          >
+            <input id="sos-file-input" type="file" accept="image/*" style={{ display: "none" }}
+              onChange={e => handleImageFile(e.target.files[0])} />
+            {imageDataUrl ? (
+              <div style={{ position: "relative" }}>
+                <img src={imageDataUrl} alt="Evidence"
+                  style={{ width: "100%", maxHeight: "150px", objectFit: "cover", borderRadius: "8px" }} />
+                <button
+                  style={{ position: "absolute", top: "6px", right: "6px", background: "rgba(0,0,0,0.65)",
+                    border: "none", borderRadius: "50%", width: "24px", height: "24px",
+                    cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                  onClick={e => { e.stopPropagation(); setImageDataUrl(null); setImageFileName(""); }}
+                >
+                  <X size={12} color="#fff" />
+                </button>
+                <div style={{ fontSize: "11px", color: "#059669", marginTop: "6px", fontWeight: "600" }}>✓ {imageFileName}</div>
+              </div>
+            ) : (
+              <div style={{ textAlign: "center", padding: "22px 12px" }}>
+                <Camera size={30} color="#94a3b8" style={{ marginBottom: "8px" }} />
+                <div style={{ fontSize: "13px", fontWeight: "700", color: "#334155" }}>Upload Photo Evidence</div>
+                <div style={{ fontSize: "11px", color: "#94a3b8", marginTop: "4px" }}>Click or drag & drop · JPG, PNG, WEBP up to 5MB</div>
+              </div>
+            )}
+          </div>
+
+          {/* Free Text Description */}
+          <div style={{ marginTop: "12px" }}>
+            <label style={{ fontSize: "12px", fontWeight: "700", color: "#334155", display: "flex", alignItems: "center", gap: "6px", marginBottom: "6px" }}>
+              <Type size={14} /> Describe Your Situation (Optional)
+            </label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="e.g. Water level rising fast, 3 elderly people on second floor, main road flooded, need boat..."
+              maxLength={500} rows={3}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: "8px", border: "1px solid #cbd5e1",
+                fontSize: "13px", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit" }}
+            />
+            <div style={{ fontSize: "11px", color: "#94a3b8", textAlign: "right" }}>{description.length}/500</div>
+          </div>
+
+          <div className="chat-progress-indicator">
+            <span>Step {TOTAL_STEPS + 1} of {TOTAL_STEPS + 1} — Evidence</span>
+            <div style={{ display: "flex", gap: "4px" }}>
+              {[0, 1, 2, 3, 4, 5].map(idx => (
+                <div key={idx} style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#10b981" }} />
+              ))}
+            </div>
+          </div>
+
+          <div style={{ padding: "0 14px 14px", display: "flex", gap: "8px" }}>
+            <button className="btn-chat-primary" onClick={handleSubmitMedia} disabled={loading} style={{ flex: 1 }}>
+              {loading ? "Analyzing..." : "🚀 Run Triage & Proceed"}
+            </button>
+            <button className="btn-chat-secondary" onClick={handleSubmitMedia} disabled={loading}
+              style={{ fontSize: "12px", padding: "10px 14px" }}>
+              Skip →
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* RESULT: Score + Dispatch */}
+      {result && (
         <div className="chat-content-body">
           <div className="chat-result-view">
-            <div className="chat-score-circle">
-              {result.priority}
-              <span>/100</span>
-            </div>
+            <div className="chat-score-circle">{result.priority}<span>/100</span></div>
             <div className="chat-severity-pill">{result.severity} PRIORITY</div>
             <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
               Assessment Confidence: <b>{result.confidence}%</b>
             </p>
-
             {result.reasons && (
               <div className="chat-reasons-box">
                 <b>Triage Factors:</b>
-                <ul>
-                  {result.reasons.map((r, i) => (
-                    <li key={i}>{r}</li>
-                  ))}
-                </ul>
+                <ul>{result.reasons.map((r, i) => <li key={i}>{r}</li>)}</ul>
               </div>
             )}
 
-            <button
-              className="btn-chat-primary"
-              onClick={() => {
-                onSOS(result);
-                resetChat();
-              }}
-            >
+            {/* Evidence preview in result */}
+            {(result.payload?.description || result.payload?.imageDataUrl) && (
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "10px 12px", marginBottom: "12px", fontSize: "12px" }}>
+                <div style={{ fontWeight: "700", color: "#065f46", marginBottom: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                  <Upload size={13} /> Evidence Attached — Transmitted to Rescue Team
+                </div>
+                {result.payload.imageDataUrl && (
+                  <img src={result.payload.imageDataUrl} alt="Evidence"
+                    style={{ width: "100%", maxHeight: "80px", objectFit: "cover", borderRadius: "6px", marginBottom: "6px" }} />
+                )}
+                {result.payload.description && (
+                  <div style={{ color: "#047857", fontStyle: "italic" }}>"{result.payload.description}"</div>
+                )}
+              </div>
+            )}
+
+            <button className="btn-chat-primary" onClick={() => { onSOS(result); resetChat(); }}>
               🚨 Dispatch SOS Now
             </button>
-            <button className="btn-chat-secondary" onClick={resetChat}>
-              Restart Assessment
-            </button>
+            <button className="btn-chat-secondary" onClick={resetChat}>Restart Assessment</button>
           </div>
         </div>
       )}
     </div>
   );
 }
+
+
 
 function CitizenDashboard({ active, setActive, incidents, teams, gps, setIncidents, onOpenChat, onSelectIncident }) {
   const [weather, setWeather] = useState(null);
@@ -687,10 +783,10 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
           <ShieldAlert size={48} color="#e11d48" style={{ marginBottom: "12px" }} />
           <h3 style={{ color: "#9f1239", fontSize: "22px", margin: "0 0 8px 0" }}>Are You or Someone Nearby in Immediate Danger?</h3>
           <p style={{ color: "#be123c", maxWidth: "560px", margin: "0 auto 20px auto", fontSize: "14px" }}>
-            Click the button below to launch our instant AI triage assistant. Your GPS coordinates and hazard severity will be transmitted immediately to field dispatchers.
+            Upload a photo or describe your situation — we'll instantly transmit it to rescue teams and provide the nearest team contact number.
           </p>
           <button className="btn-sos" style={{ padding: "14px 32px", fontSize: "16px", borderRadius: "10px" }} onClick={onOpenChat}>
-            <ShieldAlert size={20} /> Launch Rapid SOS Triage
+            <ShieldAlert size={20} /> 🚨 Launch Rapid SOS
           </button>
         </div>
 
@@ -737,7 +833,7 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
           </div>
           <div className="header-right-btns">
             <button className="btn-chat-primary" onClick={onOpenChat}>
-              + Submit New SOS Report
+              🚨 Submit Emergency SOS
             </button>
           </div>
         </div>
@@ -916,7 +1012,7 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
         </div>
         <div className="header-right-btns">
           <button className="btn-sos" onClick={onOpenChat}>
-            <ShieldAlert size={17} /> Rapid SOS Triage
+            <ShieldAlert size={17} /> 🚨 Rapid SOS
           </button>
         </div>
       </div>
@@ -1157,10 +1253,7 @@ function IncidentDetailDrawer({ incident, onClose, teams, onAssignTeam }) {
     <div className="detail-drawer">
       <div className="drawer-header">
         <h3>Incident {incident.id}</h3>
-        <button
-          onClick={onClose}
-          style={{ background: "#f1f5f9", padding: "6px", borderRadius: "50%" }}
-        >
+        <button onClick={onClose} style={{ background: "#f1f5f9", padding: "6px", borderRadius: "50%" }}>
           <X size={16} />
         </button>
       </div>
@@ -1188,6 +1281,37 @@ function IncidentDetailDrawer({ incident, onClose, teams, onAssignTeam }) {
         </div>
       </div>
 
+      {/* Citizen Evidence: Photo + Description */}
+      {(incident.imageDataUrl || incident.description) && (
+        <div style={{ marginBottom: "14px", border: "1px solid #fde68a", borderRadius: "10px", overflow: "hidden", background: "#fffbeb" }}>
+          <div style={{ padding: "8px 12px", background: "#fef3c7", fontSize: "12px", fontWeight: "700", color: "#92400e", display: "flex", alignItems: "center", gap: "6px", borderBottom: "1px solid #fde68a" }}>
+            <Camera size={13} /> Citizen-Submitted Evidence
+          </div>
+          {incident.imageDataUrl && (
+            <div style={{ padding: "10px" }}>
+              <img
+                src={incident.imageDataUrl}
+                alt="Scene evidence"
+                style={{ width: "100%", maxHeight: "180px", objectFit: "cover", borderRadius: "8px", cursor: "pointer" }}
+                onClick={() => window.open(incident.imageDataUrl, "_blank")}
+                title="Click to view full size"
+              />
+              {incident.imageFileName && (
+                <div style={{ fontSize: "11px", color: "#78716c", marginTop: "4px" }}>📎 {incident.imageFileName}</div>
+              )}
+            </div>
+          )}
+          {incident.description && (
+            <div style={{ padding: "10px 12px", fontSize: "13px", color: "#44403c", lineHeight: "1.5", borderTop: incident.imageDataUrl ? "1px solid #fde68a" : "none" }}>
+              <div style={{ fontSize: "11px", fontWeight: "700", color: "#92400e", marginBottom: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+                <Type size={11} /> Citizen's Account
+              </div>
+              <div style={{ fontStyle: "italic" }}>"{incident.description}"</div>
+            </div>
+          )}
+        </div>
+      )}
+
       {incident.assignedTeam && (
         <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", padding: "10px", borderRadius: "8px", marginBottom: "14px", fontSize: "12px", color: "#065f46" }}>
           ✓ Assigned to Team <b>{incident.assignedTeam}</b>
@@ -1208,6 +1332,7 @@ function IncidentDetailDrawer({ incident, onClose, teams, onAssignTeam }) {
     </div>
   );
 }
+
 
 function RescueLoginPage({ onLoginSuccess, onBackToCitizen }) {
   const [isRegister, setIsRegister] = useState(false);
@@ -1663,6 +1788,264 @@ function AdminLoginPage({ onLoginSuccess, onBackToCitizen }) {
   );
 }
 
+
+// ============================================================================
+// DIRECT SOS MODAL — Opens immediately with photo/text, no chatbot flow
+// ============================================================================
+function SOSDirectModal({ open, onClose, gps, teams, onSubmit }) {
+  const [description, setDescription] = useState("");
+  const [imageDataUrl, setImageDataUrl] = useState(null);
+  const [imageFileName, setImageFileName] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(null); // holds { incidentId, nearestTeam }
+
+  function handleImageFile(file) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { alert("Please upload a valid image file (JPG, PNG, WEBP)."); return; }
+    if (file.size > 5 * 1024 * 1024) { alert("Image must be under 5 MB."); return; }
+    const reader = new FileReader();
+    reader.onload = e => { setImageDataUrl(e.target.result); setImageFileName(file.name); };
+    reader.readAsDataURL(file);
+  }
+
+  async function handleSubmit() {
+    if (!description.trim() && !imageDataUrl) {
+      alert("Please upload a photo or describe your situation before submitting.");
+      return;
+    }
+    setLoading(true);
+    try {
+      const result = await onSubmit({
+        description: description.trim() || null,
+        imageDataUrl: imageDataUrl || null,
+        imageFileName: imageFileName || null,
+        lat: gps?.lat || null,
+        lng: gps?.lng || null,
+      });
+      // Find nearest NGO team and calculate distance
+      const userLat = gps?.lat || demoCenter[0];
+      const userLng = gps?.lng || demoCenter[1];
+      const getDistKm = (t) => {
+        if (!t.lat || !t.lng) return 999;
+        const dLat = (t.lat - userLat) * 111;
+        const dLng = (t.lng - userLng) * 111 * Math.cos(userLat * Math.PI / 180);
+        return Math.round(Math.sqrt(dLat * dLat + dLng * dLng) * 10) / 10;
+      };
+
+      const sortedNGOs = (teams || [])
+        .filter(t => t.type === "NGO")
+        .map(t => ({ ...t, dist: getDistKm(t) }))
+        .sort((a, b) => a.dist - b.dist);
+
+      const nearestNGO = sortedNGOs[0] || (teams && teams[0] ? { ...teams[0], dist: getDistKm(teams[0]) } : null);
+      const secondaryNGO = sortedNGOs[1] || null;
+
+      setSubmitted({
+        incidentId: result?.id || "SOS-" + Date.now(),
+        nearestTeam: nearestNGO,
+        secondaryTeam: secondaryNGO
+      });
+    } catch (err) {
+      alert("Failed to submit SOS. Please call 112 immediately.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleClose() {
+    setDescription(""); setImageDataUrl(null); setImageFileName("");
+    setDragOver(false); setLoading(false); setSubmitted(null);
+    onClose();
+  }
+
+  if (!open) return null;
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      background: "rgba(0,0,0,0.65)", backdropFilter: "blur(4px)",
+      display: "flex", alignItems: "center", justifyContent: "center", padding: "20px"
+    }} onClick={e => { if (e.target === e.currentTarget) handleClose(); }}>
+      <div style={{
+        background: "#fff", borderRadius: "16px", width: "100%", maxWidth: "480px",
+        boxShadow: "0 24px 60px rgba(0,0,0,0.3)", overflow: "hidden", maxHeight: "92vh", overflowY: "auto"
+      }}>
+        {/* Header */}
+        <div style={{
+          background: "linear-gradient(135deg, #e11d48 0%, #be123c 100%)",
+          padding: "20px 24px", display: "flex", alignItems: "center", justifyContent: "space-between"
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+            <div style={{ background: "rgba(255,255,255,0.2)", padding: "8px", borderRadius: "10px" }}>
+              <ShieldAlert size={22} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontSize: "17px", fontWeight: "800", color: "#fff" }}>Emergency SOS</div>
+              <div style={{ fontSize: "12px", color: "rgba(255,255,255,0.8)" }}>Transmit directly to rescue dispatchers</div>
+            </div>
+          </div>
+          <button onClick={handleClose} style={{ background: "rgba(255,255,255,0.2)", border: "none", borderRadius: "50%", width: "32px", height: "32px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <X size={16} color="#fff" />
+          </button>
+        </div>
+
+        {/* RESULT VIEW — after successful submit */}
+        {submitted ? (
+          <div style={{ padding: "28px 24px", textAlign: "center" }}>
+            <div style={{ fontSize: "52px", marginBottom: "12px" }}>✅</div>
+            <h3 style={{ color: "#065f46", fontSize: "18px", margin: "0 0 6px" }}>SOS Dispatched Successfully!</h3>
+            <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "10px", padding: "12px 16px", marginBottom: "18px", fontSize: "13px", color: "#047857" }}>
+              Incident Reference: <b>{submitted.incidentId}</b><br />
+              Your emergency evidence has been transmitted to dispatchers.
+            </div>
+
+            {/* Nearest NGO */}
+            {submitted.nearestTeam && (
+              <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: "10px", padding: "16px", marginBottom: "14px", textAlign: "left" }}>
+                <div style={{ fontSize: "11px", fontWeight: "700", color: "#92400e", marginBottom: "8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                    <Phone size={12} /> NEAREST NGO RESCUE TEAM — CALL NOW
+                  </span>
+                  {submitted.nearestTeam.dist !== undefined && (
+                    <span style={{ background: "#fef3c7", padding: "2px 8px", borderRadius: "12px", color: "#b45309", fontSize: "11px" }}>
+                      📍 ~{submitted.nearestTeam.dist} km
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: "16px", fontWeight: "800", color: "#1e293b", marginBottom: "2px" }}>
+                  {submitted.nearestTeam.name}
+                </div>
+                <div style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
+                  {submitted.nearestTeam.type} Relief Squad · Readiness: {submitted.nearestTeam.readiness || 90}%
+                </div>
+                <a
+                  href={`tel:${submitted.nearestTeam.phone}`}
+                  style={{
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: "8px",
+                    background: "linear-gradient(135deg, #059669 0%, #047857 100%)",
+                    color: "#fff", borderRadius: "10px", padding: "12px",
+                    fontWeight: "800", fontSize: "15px", textDecoration: "none",
+                    boxShadow: "0 4px 12px rgba(5,150,105,0.35)"
+                  }}
+                >
+                  <Phone size={18} /> Call {submitted.nearestTeam.phone}
+                </a>
+              </div>
+            )}
+
+            {/* Secondary NGO */}
+            {submitted.secondaryTeam && (
+              <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "10px 14px", marginBottom: "14px", textAlign: "left", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div>
+                  <div style={{ fontSize: "13px", fontWeight: "700", color: "#334155" }}>{submitted.secondaryTeam.name}</div>
+                  <div style={{ fontSize: "11px", color: "#64748b" }}>Alternate NGO Squad · ~{submitted.secondaryTeam.dist} km</div>
+                </div>
+                <a
+                  href={`tel:${submitted.secondaryTeam.phone}`}
+                  style={{ padding: "6px 12px", background: "#0284c7", color: "#fff", borderRadius: "6px", fontSize: "12px", fontWeight: "700", textDecoration: "none" }}
+                >
+                  Call
+                </a>
+              </div>
+            )}
+
+            {/* Helplines */}
+            <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px 14px", marginBottom: "18px", fontSize: "12px", color: "#1e40af", display: "flex", justifyContent: "space-around" }}>
+              <span>🚨 National Emergency: <b><a href="tel:112" style={{ color: "#1e40af", textDecoration: "underline" }}>112</a></b></span>
+              <span>🌊 NDRF Control: <b><a href="tel:1078" style={{ color: "#1e40af", textDecoration: "underline" }}>1078</a></b></span>
+            </div>
+
+            <button
+              onClick={handleClose}
+              style={{ background: "#f1f5f9", border: "1px solid #e2e8f0", borderRadius: "10px", padding: "12px 24px", fontWeight: "700", fontSize: "14px", cursor: "pointer", color: "#334155" }}
+            >
+              Close
+            </button>
+          </div>
+        ) : (
+          /* FORM VIEW */
+          <div style={{ padding: "24px" }}>
+            <p style={{ fontSize: "14px", color: "#475569", marginBottom: "20px", lineHeight: "1.6" }}>
+              📸 Upload a photo of the situation <b>and/or</b> describe what's happening. This information will be instantly transmitted to rescue teams and the admin control center.
+            </p>
+
+            {/* Photo Upload */}
+            <label style={{ fontSize: "12px", fontWeight: "700", color: "#334155", display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+              <Camera size={14} /> Photo Evidence
+            </label>
+            <div
+              className={`sos-upload-zone${dragOver ? " drag-over" : ""}${imageDataUrl ? " has-image" : ""}`}
+              style={{ cursor: "pointer", marginBottom: "16px", margin: "0 0 16px 0" }}
+              onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={e => { e.preventDefault(); setDragOver(false); handleImageFile(e.dataTransfer.files[0]); }}
+              onClick={() => document.getElementById("sos-direct-file").click()}
+            >
+              <input id="sos-direct-file" type="file" accept="image/*" style={{ display: "none" }}
+                onChange={e => handleImageFile(e.target.files[0])} />
+              {imageDataUrl ? (
+                <div style={{ position: "relative", padding: "6px" }}>
+                  <img src={imageDataUrl} alt="Evidence" style={{ width: "100%", maxHeight: "200px", objectFit: "cover", borderRadius: "8px" }} />
+                  <button
+                    style={{ position: "absolute", top: "12px", right: "12px", background: "rgba(0,0,0,0.6)", border: "none", borderRadius: "50%", width: "26px", height: "26px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                    onClick={e => { e.stopPropagation(); setImageDataUrl(null); setImageFileName(""); }}
+                  ><X size={13} color="#fff" /></button>
+                  <div style={{ fontSize: "11px", color: "#059669", marginTop: "6px", fontWeight: "600" }}>✓ {imageFileName}</div>
+                </div>
+              ) : (
+                <div style={{ padding: "28px", textAlign: "center" }}>
+                  <Camera size={36} color="#94a3b8" style={{ marginBottom: "10px" }} />
+                  <div style={{ fontWeight: "700", color: "#334155", fontSize: "14px" }}>Click or Drag to Upload Photo</div>
+                  <div style={{ color: "#94a3b8", fontSize: "12px", marginTop: "4px" }}>JPG, PNG, WEBP · Max 5MB</div>
+                </div>
+              )}
+            </div>
+
+            {/* Text description */}
+            <label style={{ fontSize: "12px", fontWeight: "700", color: "#334155", display: "flex", alignItems: "center", gap: "6px", marginBottom: "8px" }}>
+              <Type size={14} /> Describe the Emergency *
+            </label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="e.g. Water rising fast, 3 elderly people stranded on 2nd floor, main road flooded, need a boat and medical help urgently..."
+              maxLength={500} rows={4}
+              style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "1px solid #cbd5e1", fontSize: "13px", resize: "vertical", boxSizing: "border-box", fontFamily: "inherit", lineHeight: "1.5", marginBottom: "4px" }}
+            />
+            <div style={{ fontSize: "11px", color: "#94a3b8", textAlign: "right", marginBottom: "20px" }}>{description.length}/500</div>
+
+            {/* GPS status */}
+            {gps && (
+              <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: "8px", padding: "8px 12px", marginBottom: "16px", fontSize: "12px", color: "#047857", display: "flex", alignItems: "center", gap: "8px" }}>
+                <LocateFixed size={13} /> Your GPS location will be attached automatically
+              </div>
+            )}
+
+            <button
+              onClick={handleSubmit}
+              disabled={loading}
+              style={{
+                width: "100%", padding: "14px", borderRadius: "12px",
+                background: loading ? "#94a3b8" : "linear-gradient(135deg, #e11d48 0%, #be123c 100%)",
+                color: "#fff", border: "none", fontWeight: "800", fontSize: "16px", cursor: loading ? "not-allowed" : "pointer",
+                boxShadow: "0 6px 20px rgba(225,29,72,0.35)", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px"
+              }}
+            >
+              <ShieldAlert size={20} />
+              {loading ? "Transmitting to Dispatch..." : "🚨 Send SOS & Notify Rescue Teams"}
+            </button>
+
+            <div style={{ textAlign: "center", marginTop: "12px", fontSize: "12px", color: "#94a3b8" }}>
+              Or call immediately: <a href="tel:112" style={{ color: "#e11d48", fontWeight: "700" }}>112</a>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const [role, setRole] = useState("citizen");
   const [rescueUser, setRescueUser] = useState(() => {
@@ -1687,7 +2070,9 @@ function App() {
   const [incidents, setIncidents] = useState([]);
   const [teams, setTeams] = useState([]);
   const [chatOpen, setChatOpen] = useState(false);
+  const [sosModalOpen, setSosModalOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState(null);
+
 
   // ── Supabase: Restore session on app load ────────────────────────────────
   useEffect(() => {
@@ -1781,9 +2166,11 @@ function App() {
     const body = {
       ...payload,
       lat: gps?.lat || demoCenter[0] + (Math.random() - 0.5) * 0.02,
-      lng: gps?.lng || demoCenter[1] + (Math.random() - 0.5) * 0.02
+      lng: gps?.lng || demoCenter[1] + (Math.random() - 0.5) * 0.02,
+      description: payload.description || null,
+      imageDataUrl: payload.imageDataUrl || null,
+      imageFileName: payload.imageFileName || null
     };
-
     try {
       const res = await fetch(`${API}/incidents`, {
         method: "POST",
@@ -1792,11 +2179,39 @@ function App() {
       });
       const newInc = await res.json();
       setIncidents(prev => [newInc, ...prev]);
-      alert(`Emergency SOS successfully registered!\nIncident ID: ${newInc.id}\nPriority Score: ${newInc.priority}/100\nNearest rescue teams have been notified.`);
+      return newInc;
     } catch {
-      alert("SOS submitted in demo mode.");
+      return null;
     }
   };
+
+  // Direct SOS submit — used by SOSDirectModal (no chatbot triage, just raw evidence)
+  const handleDirectSOSSubmit = async ({ description, imageDataUrl, imageFileName, lat, lng }) => {
+    const body = {
+      type: "Emergency SOS",
+      disaster: "Emergency SOS",
+      people: 1,
+      medical: true,
+      priority: 90,
+      confidence: 80,
+      lat: lat || gps?.lat || demoCenter[0] + (Math.random() - 0.5) * 0.02,
+      lng: lng || gps?.lng || demoCenter[1] + (Math.random() - 0.5) * 0.02,
+      description: description || null,
+      imageDataUrl: imageDataUrl || null,
+      imageFileName: imageFileName || null
+    };
+    const res = await fetch(`${API}/incidents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error("Submit failed");
+    const newInc = await res.json();
+    setIncidents(prev => [newInc, ...prev]);
+    return newInc;
+  };
+
+
 
   const handleAssignTeam = async (incidentId, teamId) => {
     try {
@@ -1841,7 +2256,7 @@ function App() {
             teams={teams}
             gps={gps}
             setIncidents={setIncidents}
-            onOpenChat={() => setChatOpen(true)}
+            onOpenChat={() => setSosModalOpen(true)}
             onSelectIncident={setSelectedIncident}
           />
         </div>
@@ -1891,6 +2306,16 @@ function App() {
         )
       )}
 
+      {/* SOSDirectModal — opened by all Rapid SOS buttons */}
+      <SOSDirectModal
+        open={sosModalOpen}
+        onClose={() => setSosModalOpen(false)}
+        gps={gps}
+        teams={teams}
+        onSubmit={handleDirectSOSSubmit}
+      />
+
+      {/* Chatbot — AI triage assistant, corner floating button */}
       <Chatbot
         gps={gps}
         onSOS={handleSOSSubmit}

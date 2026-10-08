@@ -62,10 +62,10 @@ if (isSupabaseConfigured) {
 // IN-MEMORY DEMO DATA (fallback when no Supabase)
 // ──────────────────────────────────────────────
 const demoTeams = [
-  { id:"T-101", name:"Rapid Relief Foundation", type:"NGO", lat:22.5726, lng:88.3639, phone:"+91-00000-00001", readiness:94, personnel:8, skills:["Flood","Medical","Search & Rescue"], equipment:["Boat","Medical Kit"], status:"AVAILABLE" },
-  { id:"T-102", name:"District Emergency Response Unit", type:"GOVERNMENT", lat:22.585, lng:88.37, phone:"+91-00000-00002", readiness:97, personnel:12, skills:["Flood","Search & Rescue","Earthquake"], equipment:["Boat","Ambulance"], status:"AVAILABLE" },
-  { id:"T-103", name:"Community Rescue Network", type:"NGO", lat:22.56, lng:88.35, phone:"+91-00000-00003", readiness:88, personnel:6, skills:["Medical","Fire"], equipment:["Medical Kit","Rescue Vehicle"], status:"AVAILABLE" },
-  { id:"T-104", name:"Urban Search & Rescue Cell", type:"GOVERNMENT", lat:22.59, lng:88.39, phone:"+91-00000-00004", readiness:91, personnel:10, skills:["Earthquake","Landslide","Search & Rescue"], equipment:["Rescue Vehicle","Medical Kit"], status:"AVAILABLE" }
+  { id:"T-101", name:"Rapid Relief Foundation (Red Cross Partner)", type:"NGO", lat:22.5726, lng:88.3639, phone:"+91-1800-180-1104", readiness:94, personnel:8, skills:["Flood","Medical","Search & Rescue"], equipment:["Boat","Medical Kit"], status:"AVAILABLE" },
+  { id:"T-102", name:"District Emergency Response Unit", type:"GOVERNMENT", lat:22.585, lng:88.37, phone:"+91-1077", readiness:97, personnel:12, skills:["Flood","Search & Rescue","Earthquake"], equipment:["Boat","Ambulance"], status:"AVAILABLE" },
+  { id:"T-103", name:"Community Rescue Network NGO", type:"NGO", lat:22.56, lng:88.35, phone:"+91-98300-99881", readiness:88, personnel:6, skills:["Medical","Fire"], equipment:["Medical Kit","Rescue Vehicle"], status:"AVAILABLE" },
+  { id:"T-104", name:"Urban Search & Rescue Cell (NDRF Liaison)", type:"GOVERNMENT", lat:22.59, lng:88.39, phone:"+91-1070", readiness:91, personnel:10, skills:["Earthquake","Landslide","Search & Rescue"], equipment:["Rescue Vehicle","Medical Kit"], status:"AVAILABLE" }
 ];
 
 let demoIncidents = [
@@ -251,11 +251,15 @@ app.post("/api/incidents", async (req, res) => {
     medical: Boolean(body.medical),
     status: "REPORTED",
     assignedTeam: null,
+    description: body.description || null,
+    imageDataUrl: body.imageDataUrl || null,
+    imageFileName: body.imageFileName || null,
     createdAt: new Date().toISOString()
   };
 
   if (supabaseAdmin) {
     try {
+      // Note: imageDataUrl is stored as text; for large images consider Supabase Storage bucket instead
       const { data, error } = await supabaseAdmin.from("incidents").insert([incident]).select().single();
       if (!error && data) return res.status(201).json(data);
     } catch { /* ignore */ }
@@ -264,6 +268,9 @@ app.post("/api/incidents", async (req, res) => {
   demoIncidents.unshift(incident);
   res.status(201).json(incident);
 });
+
+
+
 
 app.patch("/api/incidents/:id", async (req, res) => {
   const { id } = req.params;
