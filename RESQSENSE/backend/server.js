@@ -450,7 +450,14 @@ app.post("/api/twilio/broadcast", async (req, res) => {
         const params = new URLSearchParams();
         params.append("To", formattedPhone);
         params.append("From", fromNumber);
-        params.append("Body", dispatchText);
+
+        const contentSid = process.env.TWILIO_WHATSAPP_CONTENT_SID;
+        if (channel === "whatsapp" && contentSid) {
+          params.append("ContentSid", contentSid);
+          params.append("ContentVariables", JSON.stringify({ "1": dispatchText }));
+        } else {
+          params.append("Body", dispatchText);
+        }
 
         const twilioRes = await fetch(
           `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
