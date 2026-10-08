@@ -41,7 +41,9 @@ import {
   Upload,
   Camera,
   ImageIcon,
-  Type
+  Type,
+  MessageSquare,
+  BellRing
 } from "lucide-react";
 
 import "leaflet/dist/leaflet.css";
@@ -265,7 +267,7 @@ function LiveMap({ incidents, teams, center, onSelect, showTeams = true, filter 
   );
 }
 
-function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adminUser, onSignOut }) {
+function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adminUser, onSignOut, onOpenTwilio, criticalCount }) {
   const toggleLocation = () => {
     if (gps) {
       setGps(null);
@@ -327,6 +329,24 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
           <div className="pulse-dot"></div>
           <span>System Live</span>
         </div>
+
+        {/* Admin-only: Twilio Emergency Dispatch Button */}
+        {role === "admin" && isAdminAuth && onOpenTwilio && (
+          <button
+            className="admin-twilio-trigger-btn"
+            onClick={onOpenTwilio}
+            title="Open Emergency Dispatch Console — Notify NGO/Rescue via WhatsApp, SMS, or Voice Call"
+          >
+            <span className="admin-msg-icon-badge">
+              <MessageSquare size={16} />
+              {criticalCount > 0 && <span className="pulse-ping"></span>}
+            </span>
+            <span className="admin-twilio-label">Dispatch</span>
+            {criticalCount > 0 && (
+              <span className="admin-twilio-pill">{criticalCount} Alert{criticalCount !== 1 ? "s" : ""}</span>
+            )}
+          </button>
+        )}
 
         <button
           className={`location-btn ${gps ? "active" : ""}`}
@@ -1248,6 +1268,377 @@ function AdminDashboard({ active, incidents, teams, onSelectIncident, onAssignTe
   );
 }
 
+// ============================================================================
+// TWILIO SANDBOX EMERGENCY BROADCAST MODAL
+// ============================================================================
+function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
+  const [selectedIncidentId, setSelectedIncidentId] = useState("");
+  const [channel, setChannel] = useState("whatsapp");
+  const [toPhone, setToPhone] = useState("");
+  const [customMessage, setCustomMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [receipt, setReceipt] = useState(null);
+
+  // Find the selected incident object
+  const selectedIncident = incidents.find(i => i.id === selectedIncidentId) || null;
+
+  // Calculate nearest NGO/Rescue team from the selected incident
+  const nearestTeam = React.useMemo(() => {
+    if (!selectedIncident || !teams?.length) return null;
+    const iLat = selectedIncident.lat || 22.5726;
+    const iLng = selectedIncident.lng || 88.3639;
+    const getDistKm = (t) => {
+      if (!t.lat || !t.lng) return 999;
+      const dLat = (t.lat - iLat) * 111;
+      const dLng = (t.lng - iLng) * 111 * Math.cos(iLat * Math.PI / 180);
+      return Math.round(Math.sqrt(dLat * dLat + dLng * dLng) * 10) / 10;
+    };
+    return [...teams]
+      .map(t => ({ ...t, dist: getDistKm(t) }))
+      .sort((a, b) => a.dist - b.dist)[0] || null;
+  }, [selectedIncident, teams]);
+
+  // Auto-fill phone from nearest team
+  React.useEffect(() => {
+    if (nearestTeam?.phone && !toPhone) {
+      setToPhone(nearestTeam.phone);
+    }
+  }, [nearestTeam]);
+
+  // Generate default message preview
+  const defaultMessage = selectedIncident
+    ? `🚨 [RESQSENSE URGENT DISPATCH]\n` +
+      `Attention: ${nearestTeam?.name || "Rescue Unit"}\n` +
+      `Risk Area: ${selectedIncident.type || "Emergency"} (ID: ${selectedIncident.id})\n` +
+      `Priority: ${selectedIncident.priority || 90}/100 [CRITICAL]\n` +
+      `Epicenter Coords: ${selectedIncident.lat || "22.5726"}, ${selectedIncident.lng || "88.3639"}\n` +
+      `Casualties Reported: ${selectedIncident.people || 1} people\n` +
+      `ACTION: Depart to risk coordinates ASAP. Acknowledge deployment.\n` +
+      `Dispatched by ResQSense Command Center`
+    : "";
+
+  React.useEffect(() => {
+    if (selectedIncident && !customMessage) {
+      setCustomMessage(defaultMessage);
+    }
+  }, [selectedIncidentId]);
+
+  const handleClose = () => {
+    setReceipt(null);
+    setSelectedIncidentId("");
+    setChannel("whatsapp");
+    setToPhone("");
+    setCustomMessage("");
+    onClose();
+  };
+
+  const handleDispatch = async () => {
+    if (!toPhone) { alert("Please enter a destination phone number."); return; }
+    if (!customMessage.trim()) { alert("Please enter a dispatch message."); return; }
+    setSending(true);
+    try {
+      const API = import.meta.env.VITE_API_URL || "/api";
+      const res = await fetch(`${API}/twilio/broadcast`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          incidentId: selectedIncident?.id || null,
+          incidentType: selectedIncident?.type || "Emergency",
+          lat: selectedIncident?.lat || null,
+          lng: selectedIncident?.lng || null,
+          priority: selectedIncident?.priority || 90,
+          people: selectedIncident?.people || 1,
+          teamId: nearestTeam?.id || null,
+          teamName: nearestTeam?.name || "Rescue Unit",
+          toPhone,
+          channel,
+          customMessage: customMessage.trim()
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Dispatch failed");
+      setReceipt(data);
+    } catch (err) {
+      alert("Dispatch Error: " + err.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (!open) return null;
+
+  const criticalIncidents = incidents.filter(i => i.priority >= 80);
+  const highIncidents = incidents.filter(i => i.priority >= 60 && i.priority < 80);
+
+  return (
+    <div className="twilio-modal-backdrop" onClick={handleClose}>
+      <div className="twilio-modal-box" onClick={e => e.stopPropagation()}>
+
+        {/* Header */}
+        <div className="twilio-modal-header">
+          <div className="twilio-modal-title-group">
+            <div className="twilio-header-icon-circle">
+              <BellRing size={22} />
+            </div>
+            <div>
+              <h3>Emergency Dispatch Console</h3>
+              <p>Notify nearest NGO / Rescue Squad via Twilio Sandbox</p>
+            </div>
+          </div>
+          <button className="twilio-close-btn" onClick={handleClose}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div className="twilio-modal-body">
+
+          {/* Post-dispatch receipt */}
+          {receipt ? (
+            <div className="twilio-receipt-card">
+              <div className="twilio-receipt-header">
+                <div className="twilio-receipt-status">
+                  <CheckCircle size={18} />
+                  {receipt.simulated ? "Sandbox Dispatch Simulated" : "Live Dispatch Sent"}
+                </div>
+                <span style={{ fontSize: "11px", color: "#64748b" }}>{new Date(receipt.timestamp).toLocaleString()}</span>
+              </div>
+
+              <div className="twilio-receipt-grid">
+                <div className="twilio-receipt-item">
+                  <span>Message SID</span>
+                  <strong>{receipt.sid}</strong>
+                </div>
+                <div className="twilio-receipt-item">
+                  <span>Status</span>
+                  <strong>{receipt.status}</strong>
+                </div>
+                <div className="twilio-receipt-item">
+                  <span>Channel</span>
+                  <strong>{receipt.channel?.toUpperCase()}</strong>
+                </div>
+                <div className="twilio-receipt-item">
+                  <span>Delivered To</span>
+                  <strong>{receipt.to}</strong>
+                </div>
+                <div className="twilio-receipt-item">
+                  <span>Incident</span>
+                  <strong>{receipt.incidentId || "N/A"}</strong>
+                </div>
+                <div className="twilio-receipt-item">
+                  <span>Target Team</span>
+                  <strong>{receipt.teamName || "—"}</strong>
+                </div>
+              </div>
+
+              {receipt.instructions && (
+                <div className="twilio-receipt-instructions">
+                  ℹ️ {receipt.instructions}
+                </div>
+              )}
+
+              <button
+                className="twilio-dispatch-btn"
+                onClick={handleClose}
+                style={{ marginTop: "8px", background: "linear-gradient(135deg, #334155 0%, #1e293b 100%)" }}
+              >
+                Close Console
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* 1. Incident Selector */}
+              <div className="twilio-form-section">
+                <div className="twilio-section-label">
+                  <ShieldAlert size={13} /> Select Active Incident
+                </div>
+                <div className="twilio-incident-select-box">
+                  <select
+                    className="twilio-incident-dropdown"
+                    value={selectedIncidentId}
+                    onChange={e => { setSelectedIncidentId(e.target.value); setCustomMessage(""); setToPhone(""); }}
+                  >
+                    <option value="">— Choose an incident to dispatch —</option>
+                    {criticalIncidents.length > 0 && (
+                      <optgroup label="🔴 CRITICAL PRIORITY">
+                        {criticalIncidents.map(i => (
+                          <option key={i.id} value={i.id}>
+                            {i.id} — {i.type} (Priority {i.priority}) · {i.people || 1} people
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {highIncidents.length > 0 && (
+                      <optgroup label="🟠 HIGH PRIORITY">
+                        {highIncidents.map(i => (
+                          <option key={i.id} value={i.id}>
+                            {i.id} — {i.type} (Priority {i.priority}) · {i.people || 1} people
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    <optgroup label="All Incidents">
+                      {incidents.filter(i => i.priority < 60).map(i => (
+                        <option key={i.id} value={i.id}>
+                          {i.id} — {i.type} (Priority {i.priority || "?"}) · {i.people || 1} people
+                        </option>
+                      ))}
+                    </optgroup>
+                  </select>
+
+                  {selectedIncident && (
+                    <div className="twilio-risk-meta-grid">
+                      <div className="twilio-risk-meta-item">
+                        <span>Hazard Type</span>
+                        <strong>{selectedIncident.type}</strong>
+                      </div>
+                      <div className="twilio-risk-meta-item">
+                        <span>Priority</span>
+                        <strong style={{ color: selectedIncident.priority >= 80 ? "#dc2626" : selectedIncident.priority >= 60 ? "#d97706" : "#059669" }}>
+                          {selectedIncident.priority}/100
+                        </strong>
+                      </div>
+                      <div className="twilio-risk-meta-item">
+                        <span>Coordinates</span>
+                        <strong>{selectedIncident.lat?.toFixed(4)}, {selectedIncident.lng?.toFixed(4)}</strong>
+                      </div>
+                      <div className="twilio-risk-meta-item">
+                        <span>People Affected</span>
+                        <strong>{selectedIncident.people || 1}</strong>
+                      </div>
+                      <div className="twilio-risk-meta-item">
+                        <span>Status</span>
+                        <strong>{selectedIncident.status}</strong>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* 2. Nearest NGO / Rescue */}
+              {nearestTeam && (
+                <div className="twilio-form-section">
+                  <div className="twilio-section-label">
+                    <Navigation size={13} /> Nearest Responder (Auto-Detected)
+                  </div>
+                  <div className="twilio-ngo-banner">
+                    <div className="twilio-ngo-banner-header">
+                      <span className="twilio-nearest-badge">
+                        <Navigation size={11} /> Nearest Squad
+                      </span>
+                      <span className="twilio-dist-pill">📍 ~{nearestTeam.dist} km</span>
+                    </div>
+                    <h4 className="twilio-ngo-name">{nearestTeam.name}</h4>
+                    <div className="twilio-ngo-meta">
+                      <span>🏢 {nearestTeam.type}</span>
+                      <span>📞 {nearestTeam.phone}</span>
+                      <span>💪 {nearestTeam.personnel || "?"} personnel</span>
+                      <span>Readiness: {nearestTeam.readiness || 90}%</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Channel Selector */}
+              <div className="twilio-form-section">
+                <div className="twilio-section-label">
+                  <Send size={13} /> Choose Notification Channel
+                </div>
+                <div className="twilio-channel-grid">
+                  <button
+                    className={`twilio-channel-btn whatsapp ${channel === "whatsapp" ? "active" : ""}`}
+                    onClick={() => setChannel("whatsapp")}
+                  >
+                    <div className="twilio-channel-icon-wrap">
+                      <MessageSquare size={20} />
+                    </div>
+                    <div className="twilio-channel-btn-title">WhatsApp</div>
+                    <div className="twilio-channel-btn-sub">Twilio Sandbox</div>
+                  </button>
+                  <button
+                    className={`twilio-channel-btn sms ${channel === "sms" ? "active" : ""}`}
+                    onClick={() => setChannel("sms")}
+                  >
+                    <div className="twilio-channel-icon-wrap">
+                      <MessageCircle size={20} />
+                    </div>
+                    <div className="twilio-channel-btn-title">SMS</div>
+                    <div className="twilio-channel-btn-sub">Text Message</div>
+                  </button>
+                  <button
+                    className={`twilio-channel-btn call ${channel === "call" ? "active" : ""}`}
+                    onClick={() => setChannel("call")}
+                  >
+                    <div className="twilio-channel-icon-wrap">
+                      <Phone size={20} />
+                    </div>
+                    <div className="twilio-channel-btn-title">Voice Call</div>
+                    <div className="twilio-channel-btn-sub">Auto-Dialer</div>
+                  </button>
+                </div>
+
+                {channel === "whatsapp" && (
+                  <div className="twilio-sandbox-note">
+                    💬 <strong>Twilio WhatsApp Sandbox:</strong> Recipient must first send <code>join &lt;your-sandbox-keyword&gt;</code> to <code>+1 415 523 8886</code> on WhatsApp. Use <code>whatsapp:+91XXXXXXXXXX</code> format.
+                  </div>
+                )}
+              </div>
+
+              {/* 4. Phone Number */}
+              <div className="twilio-form-section">
+                <div className="twilio-section-label">
+                  <Phone size={13} /> Destination Phone Number
+                </div>
+                <div className="twilio-phone-input-row">
+                  <input
+                    className="twilio-phone-input"
+                    type="text"
+                    placeholder={channel === "whatsapp" ? "whatsapp:+919830099881" : "+919830099881"}
+                    value={toPhone}
+                    onChange={e => setToPhone(e.target.value)}
+                  />
+                  {nearestTeam?.phone && toPhone !== nearestTeam.phone && (
+                    <button
+                      className="twilio-test-btn"
+                      onClick={() => setToPhone(nearestTeam.phone)}
+                    >
+                      Use NGO Number
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* 5. Message */}
+              <div className="twilio-form-section">
+                <div className="twilio-section-label">
+                  <FileText size={13} /> Dispatch Message Preview
+                </div>
+                <textarea
+                  className="twilio-message-box"
+                  value={customMessage}
+                  onChange={e => setCustomMessage(e.target.value)}
+                  placeholder="Emergency dispatch message will auto-generate when you select an incident..."
+                  rows={5}
+                />
+              </div>
+
+              {/* 6. Send Button */}
+              <button
+                className="twilio-dispatch-btn"
+                onClick={handleDispatch}
+                disabled={sending || !toPhone}
+              >
+                <Send size={18} />
+                {sending ? "Dispatching Emergency Alert..." : `🚨 Send Emergency Broadcast via ${channel.toUpperCase()}`}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IncidentDetailDrawer({ incident, onClose, teams, onAssignTeam }) {
   if (!incident) return null;
 
@@ -2079,6 +2470,7 @@ function App() {
   const [chatOpen, setChatOpen] = useState(false);
   const [sosModalOpen, setSosModalOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState(null);
+  const [twilioModalOpen, setTwilioModalOpen] = useState(false);
 
 
   // ── Supabase: Restore session on app load ────────────────────────────────
@@ -2252,6 +2644,8 @@ function App() {
         rescueUser={rescueUser}
         adminUser={adminUser}
         onSignOut={handleSignOut}
+        onOpenTwilio={() => setTwilioModalOpen(true)}
+        criticalCount={incidents.filter(i => i.priority >= 80).length}
       />
 
       {/* Citizen View: Free and open to everyone without login */}
@@ -2333,6 +2727,14 @@ function App() {
           setOpen={setChatOpen}
         />
       )}
+
+      {/* Twilio Emergency Broadcast Modal — Admin Only */}
+      <TwilioBroadcastModal
+        open={twilioModalOpen}
+        onClose={() => setTwilioModalOpen(false)}
+        incidents={incidents}
+        teams={teams}
+      />
 
       <IncidentDetailDrawer
         incident={selectedIncident}

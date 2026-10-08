@@ -329,6 +329,174 @@ app.delete("/api/incidents/:id", async (req, res) => {
 });
 
 // ──────────────────────────────────────────────
+// TWILIO SANDBOX EMERGENCY DISPATCH ROUTE
+// ──────────────────────────────────────────────
+app.post("/api/twilio/broadcast", async (req, res) => {
+  const {
+    incidentId,
+    incidentType,
+    lat,
+    lng,
+    priority,
+    people,
+    teamId,
+    teamName,
+    toPhone,
+    channel = "whatsapp", // "whatsapp" | "sms" | "call"
+    customMessage,
+    adminBadge = "COMMAND-HQ"
+  } = req.body;
+
+  const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID;
+  const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+  const TWILIO_PHONE = process.env.TWILIO_PHONE_NUMBER;
+  const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_NUMBER || "whatsapp:+14155238886";
+
+  const dispatchText = customMessage ||
+    `🚨 [RESQSENSE URGENT DISPATCH]\n` +
+    `Attention: ${teamName || "Rescue Unit"}\n` +
+    `Risk Area: ${incidentType || "Emergency Incident"} (ID: ${incidentId || "N/A"})\n` +
+    `Priority: ${priority || 90}/100 [CRITICAL]\n` +
+    `Epicenter Coords: ${lat || "22.5726"}, ${lng || "88.3639"}\n` +
+    `Casualties Reported: ${people || 1} people\n` +
+    `ACTION: Depart to risk coordinates ASAP. Acknowledge deployment.\n` +
+    `Dispatched by ResQSense Command (${adminBadge})`;
+
+  const isConfigured = Boolean(
+    TWILIO_ACCOUNT_SID &&
+    TWILIO_AUTH_TOKEN &&
+    !TWILIO_ACCOUNT_SID.startsWith("your-") &&
+    !TWILIO_AUTH_TOKEN.startsWith("your-")
+  );
+
+  // If incidentId & teamId provided, update the incident to ASSIGNED in Supabase or memory
+  if (incidentId && teamId) {
+    if (supabaseAdmin) {
+      try {
+        await supabaseAdmin
+          .from("incidents")
+          .update({ assignedTeam: teamId, status: "ASSIGNED" })
+          .eq("id", incidentId);
+      } catch { /* ignore */ }
+    }
+    const targetInc = demoIncidents.find(i => i.id === incidentId);
+    if (targetInc) {
+      targetInc.assignedTeam = teamId;
+      targetInc.status = "ASSIGNED";
+    }
+  }
+
+  // Live Twilio Call via REST API
+  if (isConfigured) {
+    try {
+      const basicAuth = Buffer.from(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`).toString("base64");
+
+      if (channel === "call") {
+        const twiml = `<Response><Say voice="alice">Emergency alert from ResQ-Sense Command Center. Attention ${teamName || "Rescue Unit"}. Critical disaster reported at ${incidentType || "risk area"}. Immediate rescue deployment required. Check your dispatch console.</Say></Response>`;
+        const params = new URLSearchParams();
+        params.append("To", toPhone);
+        params.append("From", TWILIO_PHONE || "+15005550006");
+        params.append("Twiml", twiml);
+
+        const twilioRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Calls.json`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Basic ${basicAuth}`,
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: params.toString()
+          }
+        );
+        const data = await twilioRes.json();
+        if (!twilioRes.ok) {
+          throw new Error(data.message || "Twilio Voice call failed");
+        }
+        return res.json({
+          ok: true,
+          live: true,
+          sid: data.sid,
+          status: data.status || "queued",
+          channel: "call",
+          to: toPhone,
+          teamName,
+          incidentId,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        let fromNumber = channel === "whatsapp"
+          ? (TWILIO_WHATSAPP_FROM.startsWith("whatsapp:") ? TWILIO_WHATSAPP_FROM : `whatsapp:${TWILIO_WHATSAPP_FROM}`)
+          : (TWILIO_PHONE || "+15005550006");
+
+        let toNumber = toPhone;
+        if (channel === "whatsapp" && !toNumber.startsWith("whatsapp:")) {
+          toNumber = `whatsapp:${toNumber}`;
+        }
+
+        const params = new URLSearchParams();
+        params.append("To", toNumber);
+        params.append("From", fromNumber);
+        params.append("Body", dispatchText);
+
+        const twilioRes = await fetch(
+          `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`,
+          {
+            method: "POST",
+            headers: {
+              "Authorization": `Basic ${basicAuth}`,
+              "Content-Type": "application/x-www-form-urlencoded"
+            },
+            body: params.toString()
+          }
+        );
+        const data = await twilioRes.json();
+        if (!twilioRes.ok) {
+          throw new Error(data.message || "Twilio Message dispatch failed");
+        }
+        return res.json({
+          ok: true,
+          live: true,
+          sid: data.sid,
+          status: data.status || "sent",
+          channel,
+          to: toNumber,
+          teamName,
+          incidentId,
+          timestamp: new Date().toISOString()
+        });
+      }
+    } catch (err) {
+      console.error("Twilio live dispatch error:", err.message);
+      return res.status(502).json({
+        ok: false,
+        error: err.message,
+        hint: "Check Twilio Account SID, Auth Token, and sandbox destination recipient registration."
+      });
+    }
+  }
+
+  // Graceful Twilio Sandbox simulation for testing / demo
+  const prefix = channel === "call" ? "CA" : "SM";
+  const fakeSid = prefix + Math.random().toString(36).substring(2, 12) + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
+
+  return res.json({
+    ok: true,
+    simulated: true,
+    sid: fakeSid,
+    status: channel === "call" ? "ringing" : "delivered",
+    channel,
+    to: toPhone,
+    teamName: teamName || "Nearest Responder Squad",
+    incidentId: incidentId || "INC-ACTIVE",
+    message: dispatchText,
+    timestamp: new Date().toISOString(),
+    instructions: "Twilio Sandbox Dispatch simulated successfully! (Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in .env or Vercel Environment Variables to route to live phone carriers)."
+  });
+});
+
+
+// ──────────────────────────────────────────────
 // 3. CONTROL MAP SITUATIONAL INTELLIGENCE
 // ──────────────────────────────────────────────
 app.get("/api/control-map", async (_, res) => {
