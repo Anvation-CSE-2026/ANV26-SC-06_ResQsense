@@ -1,8 +1,26 @@
 {
-  "name": "resqsense-project",
+  "name": "resqsense-monorepo",
   "private": true,
   "version": "1.0.0",
+  "workspaces": [
+    "RESQSENSE"
+  ],
   "scripts": {
-    "build": "npm --prefix RESQSENSE run build"
+    "build": "cd RESQSENSE && npm run build"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.117.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "cors": "^2.8.5",
+    "dotenv": "^18.0.6",
+    "express": "^4.21.2",
+    "leaflet": "^1.9.4",
+    "leaflet.heat": "^0.2.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-leaflet": "^4.2.1",
+    "vite": "^6.0.5"
   }
 }
