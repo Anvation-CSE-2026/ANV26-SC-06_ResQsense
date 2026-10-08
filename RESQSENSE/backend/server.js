@@ -373,6 +373,8 @@ app.post(["/api/twilio/broadcast", "/api/twilio/dispatch"], async (req, res) => 
     toPhone,
     channel = "whatsapp", // "whatsapp" | "sms" | "call"
     customMessage,
+    message: directMessage,
+    text: altText,
     adminBadge = "COMMAND-HQ"
   } = req.body;
 
@@ -381,7 +383,7 @@ app.post(["/api/twilio/broadcast", "/api/twilio/dispatch"], async (req, res) => 
   const TWILIO_PHONE = process.env.TWILIO_PHONE_NUMBER;
   const TWILIO_WHATSAPP_FROM = process.env.TWILIO_WHATSAPP_NUMBER || "whatsapp:+14155238886";
 
-  const dispatchText = customMessage ||
+  const dispatchText = customMessage || directMessage || altText ||
     `🚨 [RESQSENSE URGENT DISPATCH]\n` +
     `Attention: ${teamName || "Rescue Unit"}\n` +
     `Risk Area: ${incidentType || "Emergency Incident"} (ID: ${incidentId || "N/A"})\n` +
@@ -432,6 +434,8 @@ app.post(["/api/twilio/broadcast", "/api/twilio/dispatch"], async (req, res) => 
     }
   }
   const formattedPhone = isWhatsapp ? `whatsapp:${rawPhone}` : rawPhone;
+
+  let liveErrorNotice = null;
 
   // Live Twilio Call via REST API
   if (isConfigured) {
@@ -517,6 +521,7 @@ app.post(["/api/twilio/broadcast", "/api/twilio/dispatch"], async (req, res) => 
         });
       }
     } catch (err) {
+      liveErrorNotice = err.message;
       console.warn("⚠️ Twilio live API returned notice:", err.message, "— Falling back to Sandbox Dispatch Simulation.");
       // Fall through to simulation block below so user demo / presentation remains functional
     }
@@ -529,15 +534,21 @@ app.post(["/api/twilio/broadcast", "/api/twilio/dispatch"], async (req, res) => 
   return res.json({
     ok: true,
     simulated: true,
+    live: false,
     sid: fakeSid,
     status: channel === "call" ? "ringing" : "delivered",
     channel,
-    to: toPhone,
+    to: toPhone || "+918210868501",
     teamName: teamName || "Nearest Responder Squad",
     incidentId: incidentId || "INC-ACTIVE",
     message: dispatchText,
+    warning: liveErrorNotice
+      ? `Twilio Live Carrier Notice: ${liveErrorNotice}. (In Twilio Trial accounts, only verified phone numbers like +918210868501 can receive live dispatches).`
+      : (!isConfigured ? "Twilio environment variables not configured on this host. Running in Safe Sandbox Simulation mode." : null),
     timestamp: new Date().toISOString(),
-    instructions: "Twilio Sandbox Dispatch simulated successfully! (Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in .env or Vercel Environment Variables to route to live phone carriers)."
+    instructions: isConfigured
+      ? (liveErrorNotice ? `Twilio Notice: ${liveErrorNotice}` : "Carrier processed via Twilio.")
+      : "Add TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER in Vercel Environment Variables or local .env to route to live phone carriers."
   });
 });
 

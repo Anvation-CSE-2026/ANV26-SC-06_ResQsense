@@ -1606,14 +1606,11 @@ export function EmergencyAlertsDashboard({ incidents = [], teams = [], onOpenTwi
   useEffect(() => {
     if (verifiedTeams.length && !selectedSquadId) {
       setSelectedSquadId(verifiedTeams[0].id);
-      if (verifiedTeams[0].phone) setTargetPhone(verifiedTeams[0].phone);
     }
   }, [verifiedTeams, selectedSquadId]);
 
   const handleSquadChange = (squadId) => {
     setSelectedSquadId(squadId);
-    const sq = verifiedTeams.find(t => t.id === squadId);
-    if (sq && sq.phone) setTargetPhone(sq.phone);
   };
 
   const handleApplyPreset = (text) => {
@@ -1814,6 +1811,10 @@ export function EmergencyAlertsDashboard({ incidents = [], teams = [], onOpenTwi
             </div>
           </div>
 
+          <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", borderRadius: "8px", padding: "10px 14px", marginBottom: "14px", fontSize: "12px", color: "#1e40af", lineHeight: "1.5" }}>
+            💡 <strong>Twilio Trial Direct Delivery:</strong> Real SMS & Phone Calls will ring immediately on your Twilio-verified phone (<code>+918210868501</code>). In Trial mode, Twilio only allows sending live calls/SMS to verified numbers.
+          </div>
+
           <form onSubmit={handleSendDispatch} style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
             {/* Channel Selector */}
             <div>
@@ -1852,7 +1853,7 @@ export function EmergencyAlertsDashboard({ incidents = [], teams = [], onOpenTwi
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
               <div>
                 <label style={{ fontSize: "12px", fontWeight: "700", color: "var(--text-main)", marginBottom: "4px", display: "block" }}>
-                  Verified Rescue Unit:
+                  Assigned Rescue Squad:
                 </label>
                 <select
                   value={selectedSquadId}
@@ -1869,9 +1870,18 @@ export function EmergencyAlertsDashboard({ incidents = [], teams = [], onOpenTwi
               </div>
 
               <div>
-                <label style={{ fontSize: "12px", fontWeight: "700", color: "var(--text-main)", marginBottom: "4px", display: "block" }}>
-                  Recipient Phone (E.164):
-                </label>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                  <label style={{ fontSize: "12px", fontWeight: "700", color: "var(--text-main)" }}>
+                    Recipient Phone (E.164):
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setTargetPhone("+918210868501")}
+                    style={{ fontSize: "11px", color: "#059669", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: "4px", padding: "1px 6px", cursor: "pointer", fontWeight: "700" }}
+                  >
+                    ⚡ Verified Phone
+                  </button>
+                </div>
                 <input
                   type="tel"
                   value={targetPhone}
@@ -1961,21 +1971,38 @@ export function EmergencyAlertsDashboard({ incidents = [], teams = [], onOpenTwi
                 marginTop: "16px",
                 padding: "14px",
                 borderRadius: "10px",
-                background: receipt.ok ? "var(--primary-light)" : "var(--danger-light)",
-                border: `1.5px solid ${receipt.ok ? "var(--primary-border)" : "var(--danger-border)"}`
+                background: receipt.live ? "#ecfdf5" : (receipt.warning ? "#fffbeb" : "var(--primary-light)"),
+                border: `1.5px solid ${receipt.live ? "#10b981" : (receipt.warning ? "#f59e0b" : "var(--primary-border)")}`
               }}
             >
               <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "6px" }}>
-                {receipt.ok ? <CheckCircle size={18} color="var(--primary-dark)" /> : <AlertTriangle size={18} color="var(--danger)" />}
-                <strong style={{ color: receipt.ok ? "var(--primary-dark)" : "var(--danger)" }}>
-                  {receipt.ok ? `Emergency Alert Dispatched Successfully!` : "Alert Broadcast Notice"}
+                {receipt.live ? (
+                  <CheckCircle size={18} color="#059669" />
+                ) : receipt.warning ? (
+                  <AlertTriangle size={18} color="#d97706" />
+                ) : (
+                  <CheckCircle size={18} color="var(--primary-dark)" />
+                )}
+                <strong style={{ color: receipt.live ? "#065f46" : (receipt.warning ? "#92400e" : "var(--primary-dark)") }}>
+                  {receipt.live
+                    ? "🟢 Live Carrier Dispatch Sent to Your Phone!"
+                    : receipt.warning
+                    ? "⚠️ Twilio Carrier Notice"
+                    : "ℹ️ Sandbox Dispatch Processed"}
                 </strong>
               </div>
               <div style={{ fontSize: "12px", color: "var(--text-body)", lineHeight: "1.6" }}>
                 <div>Recipient: <b>{receipt.to}</b> ({receipt.teamName})</div>
-                <div>Transmission SID: <code style={{ background: "rgba(0,0,0,0.06)", padding: "2px 6px", borderRadius: "4px" }}>{receipt.sid}</code></div>
-                <div>Carrier Status: <span style={{ fontWeight: "700", textTransform: "uppercase" }}>{receipt.status}</span></div>
-                {receipt.instructions && <div style={{ marginTop: "4px", fontSize: "11.5px", color: "var(--text-muted)" }}>{receipt.instructions}</div>}
+                <div>Carrier Transmission SID: <code style={{ background: "rgba(0,0,0,0.06)", padding: "2px 6px", borderRadius: "4px" }}>{receipt.sid}</code></div>
+                <div>Delivery Status: <span style={{ fontWeight: "700", textTransform: "uppercase" }}>{receipt.status}</span> ({receipt.live ? "LIVE" : "SANDBOX"})</div>
+                {receipt.warning && (
+                  <div style={{ marginTop: "6px", padding: "8px", background: "#fef3c7", borderRadius: "6px", color: "#92400e", fontSize: "11.5px", fontWeight: "600" }}>
+                    {receipt.warning}
+                  </div>
+                )}
+                {receipt.instructions && !receipt.warning && (
+                  <div style={{ marginTop: "4px", fontSize: "11.5px", color: "var(--text-muted)" }}>{receipt.instructions}</div>
+                )}
               </div>
             </div>
           )}

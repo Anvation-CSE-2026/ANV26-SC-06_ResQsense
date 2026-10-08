@@ -1420,7 +1420,7 @@ function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident,
 function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
   const [selectedIncidentId, setSelectedIncidentId] = useState("");
   const [channel, setChannel] = useState("whatsapp");
-  const [toPhone, setToPhone] = useState("");
+  const [toPhone, setToPhone] = useState("+918210868501");
   const [customMessage, setCustomMessage] = useState("");
   const [sending, setSending] = useState(false);
   const [receipt, setReceipt] = useState(null);
@@ -1601,7 +1601,13 @@ function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
                 </div>
               </div>
 
-              {receipt.instructions && (
+              {receipt.warning && (
+                <div style={{ marginTop: "10px", padding: "10px 14px", borderRadius: "8px", background: "#fef3c7", border: "1px solid #f59e0b", color: "#92400e", fontSize: "12px", lineHeight: "1.5" }}>
+                  ⚠️ {receipt.warning}
+                </div>
+              )}
+
+              {receipt.instructions && !receipt.warning && (
                 <div className="twilio-receipt-instructions">
                   ℹ️ {receipt.instructions}
                 </div>
@@ -1791,10 +1797,17 @@ function TwilioBroadcastModal({ open, onClose, incidents, teams }) {
                   <input
                     className="twilio-phone-input"
                     type="text"
-                    placeholder={channel === "whatsapp" ? "whatsapp:+919830099881" : "+919830099881"}
+                    placeholder={channel === "whatsapp" ? "whatsapp:+918210868501" : "+918210868501"}
                     value={toPhone}
                     onChange={e => setToPhone(e.target.value)}
                   />
+                  <button
+                    className="twilio-test-btn"
+                    style={{ background: "#059669", color: "#fff", border: "none" }}
+                    onClick={() => setToPhone("+918210868501")}
+                  >
+                    ⚡ Verified Phone
+                  </button>
                   {nearestTeam?.phone && toPhone !== nearestTeam.phone && (
                     <button
                       className="twilio-test-btn"
