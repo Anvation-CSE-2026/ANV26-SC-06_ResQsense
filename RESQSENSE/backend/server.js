@@ -870,4 +870,8 @@ app.get("/api/auth/me", (req, res) => {
   res.json({ ok: true });
 });
 
-app.listen(PORT, () => console.log(`RESQSENSE API running on http://localhost:${PORT} [${isSupabaseConfigured ? "Supabase" : "Demo"} mode]`));
+module.exports = app;
+
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => console.log(`RESQSENSE API running on http://localhost:${PORT} [${isSupabaseConfigured ? "Supabase" : "Demo"} mode]`));
+}

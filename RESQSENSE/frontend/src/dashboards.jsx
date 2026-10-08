@@ -28,6 +28,8 @@ import {
   LifeBuoy
 } from "lucide-react";
 
+const API = import.meta.env.VITE_API_URL || "/api";
+
 // ============================================================================
 // 1. DASHBOARD OVERVIEW (Unified Command Center)
 // ============================================================================
@@ -46,7 +48,7 @@ export function DashboardOverview({
   const [selectedTeamId, setSelectedTeamId] = useState(teams[0]?.id || "");
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/dashboard/stats")
+    fetch(`${API}/dashboard/stats`)
       .then(r => r.json())
       .then(d => setStats(d))
       .catch(() => {});
@@ -279,7 +281,7 @@ export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onA
   const handleCreateIncident = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://localhost:5000/api/incidents", {
+      const res = await fetch(`${API}/incidents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -301,7 +303,7 @@ export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onA
 
   const handleStatusChange = async (incidentId, newStatus) => {
     try {
-      await fetch(`http://localhost:5000/api/incidents/${incidentId}`, {
+      await fetch(`${API}/incidents/${incidentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus })
@@ -315,7 +317,7 @@ export function IncidentQueueDashboard({ incidents, teams, onSelectIncident, onA
   const handleDelete = async (incidentId) => {
     if (!confirm(`Are you sure you want to remove incident ${incidentId}?`)) return;
     try {
-      await fetch(`http://localhost:5000/api/incidents/${incidentId}`, { method: "DELETE" });
+      await fetch(`${API}/incidents/${incidentId}`, { method: "DELETE" });
       onRefresh?.();
     } catch (err) {
       console.error(err);
@@ -594,7 +596,7 @@ export function ControlMapDashboard({ incidents, teams, onSelectIncident, onAssi
   const [layerHospitals, setLayerHospitals] = useState(true);
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/control-map")
+    fetch(`${API}/control-map`)
       .then(r => r.json())
       .then(d => setMapIntel(d))
       .catch(() => {});
@@ -724,7 +726,7 @@ export function ResourceAllocationDashboard({ incidents, teams }) {
   const [allocTargetIncident, setAllocTargetIncident] = useState(incidents[0]?.id || "FIELD_DISPATCH");
 
   const loadResources = () => {
-    fetch("http://localhost:5000/api/resources")
+    fetch(`${API}/resources`)
       .then(r => r.json())
       .then(d => setData(d))
       .catch(() => {});
@@ -738,7 +740,7 @@ export function ResourceAllocationDashboard({ incidents, teams }) {
     e.preventDefault();
     if (!allocateModalItem) return;
     try {
-      const res = await fetch("http://localhost:5000/api/resources/allocate", {
+      const res = await fetch(`${API}/resources/allocate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -960,7 +962,7 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
   const handleCreateSquad = async (e) => {
     e.preventDefault();
     try {
-      const res = await fetch("http://localhost:5000/api/teams", {
+      const res = await fetch(`${API}/teams`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -987,7 +989,7 @@ export function RescueTeamsDashboard({ teams, incidents, onRefresh }) {
   const toggleTeamStatus = async (teamId, currentStatus) => {
     const newStatus = currentStatus === "AVAILABLE" ? "DEPLOYED" : "AVAILABLE";
     try {
-      await fetch(`http://localhost:5000/api/teams/${teamId}`, {
+      await fetch(`${API}/teams/${teamId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: newStatus })
@@ -1193,7 +1195,7 @@ export function EmergencyAnalyticsDashboard({ incidents, teams }) {
   const [analytics, setAnalytics] = useState(null);
 
   useEffect(() => {
-    fetch("http://localhost:5000/api/analytics")
+    fetch(`${API}/analytics`)
       .then(r => r.json())
       .then(d => setAnalytics(d))
       .catch(() => {});

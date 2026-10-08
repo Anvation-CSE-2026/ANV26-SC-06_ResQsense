@@ -43,7 +43,7 @@ export const supabase = isSupabaseConfigured
  * then initializes client session so user is logged in immediately.
  */
 export async function supabaseSignUp({ email, password, role, name, badgeId, agency }) {
-  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+  const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
   // 1. Try server-assisted signup (auto-confirms email in Supabase)
   try {
@@ -91,7 +91,7 @@ export async function supabaseSignUp({ email, password, role, name, badgeId, age
  * After sign-in, the session is auto-persisted in localStorage.
  */
 export async function supabaseSignIn({ email, password }) {
-  const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+  const API_BASE = import.meta.env.VITE_API_URL || "/api";
 
   // 1. Try client-side Supabase signIn
   if (supabase) {

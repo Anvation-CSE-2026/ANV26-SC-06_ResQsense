@@ -65,7 +65,7 @@ import {
   EmergencyAnalyticsDashboard
 } from "./dashboards.jsx";
 
-const API = "http://localhost:5000/api";
+const API = import.meta.env.VITE_API_URL || "/api";
 const demoCenter = [22.5726, 88.3639];
 
 // Fix Leaflet marker icon asset URLs
