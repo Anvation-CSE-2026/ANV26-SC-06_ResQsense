@@ -1,0 +1,7 @@
+{
+  "name":"resqsense-frontend",
+  "private":true,
+  "dependencies":{
+    "@vitejs/plugin-react":"^4.3.4"
+  }
+}
