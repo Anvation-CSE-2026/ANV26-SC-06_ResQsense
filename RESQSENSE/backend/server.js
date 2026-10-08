@@ -734,15 +734,110 @@ app.get("/api/teams/nearby", async (req, res) => {
   res.json(result);
 });
 
-// --- Weather (demo/mock) ---
-app.get("/api/weather", async (req, res) => {
-  const { lat, lng } = req.query;
-  res.json({
+// --- Weather (Open-Meteo with an explicitly labeled demo fallback) ---
+const weatherCache = new Map();
+const WEATHER_CACHE_TTL_MS = 10 * 60 * 1000;
+const WEATHER_CACHE_MAX_ENTRIES = 100;
+
+function describeWeatherCode(code) {
+  if (code === 0) return "Clear sky";
+  if (code === 1) return "Mainly clear";
+  if (code === 2) return "Partly cloudy";
+  if (code === 3) return "Overcast";
+  if (code === 45 || code === 48) return "Fog";
+  if ([51, 53, 55, 56, 57].includes(code)) return "Drizzle";
+  if ([61, 63, 65, 66, 67].includes(code)) return "Rain";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "Snow";
+  if ([80, 81, 82].includes(code)) return "Rain showers";
+  if ([95, 96, 99].includes(code)) return "Thunderstorm";
+  return "Conditions unavailable";
+}
+
+function demoWeather(lat, lng, fallback = false) {
+  return {
     mode: "DEMO",
-    location: { lat: Number(lat) || 0, lng: Number(lng) || 0 },
-    current: { temperature: 29, humidity: 78, wind: 14, rainfall: 18, condition: "Heavy Rain" },
-    alerts: ["Heavy rainfall possible in the selected area"]
-  });
+    source: "demo",
+    updatedAt: new Date().toISOString(),
+    fallback,
+    location: { lat, lng },
+    current: { temperature: 29, humidity: 78, wind: 14, rainfall: 18, condition: "Demo conditions" },
+    daily: [],
+    alerts: []
+  };
+}
+
+app.get("/api/weather", async (req, res) => {
+  const lat = Number(req.query.lat);
+  const lng = Number(req.query.lng);
+  if (!Number.isFinite(lat) || lat < -90 || lat > 90 || !Number.isFinite(lng) || lng < -180 || lng > 180) {
+    return res.status(400).json({ error: "Valid latitude and longitude are required." });
+  }
+
+  const cacheKey = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  const cached = weatherCache.get(cacheKey);
+  if (cached && Date.now() - cached.cachedAt < WEATHER_CACHE_TTL_MS) {
+    return res.json(cached.data);
+  }
+
+  const url = new URL("https://api.open-meteo.com/v1/forecast");
+  url.search = new URLSearchParams({
+    latitude: String(lat),
+    longitude: String(lng),
+    current: "temperature_2m,relative_humidity_2m,apparent_temperature,precipitation,wind_speed_10m,wind_direction_10m,weather_code",
+    daily: "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum",
+    forecast_days: "3",
+    timezone: "auto"
+  }).toString();
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const response = await fetch(url, { signal: controller.signal });
+    if (!response.ok) throw new Error(`Open-Meteo returned HTTP ${response.status}`);
+
+    const data = await response.json();
+    const current = data.current;
+    if (!current || !data.daily) throw new Error("Open-Meteo response did not contain weather data");
+
+    const result = {
+      mode: "LIVE",
+      source: "open-meteo",
+      sourceUrl: "https://open-meteo.com",
+      updatedAt: current.time ? new Date(current.time).toISOString() : new Date().toISOString(),
+      fallback: false,
+      location: { lat, lng },
+      current: {
+        temperature: current.temperature_2m,
+        feelsLike: current.apparent_temperature,
+        humidity: current.relative_humidity_2m,
+        wind: current.wind_speed_10m,
+        windDirection: current.wind_direction_10m,
+        rainfall: current.precipitation,
+        condition: describeWeatherCode(current.weather_code)
+      },
+      daily: (data.daily.time || []).map((date, index) => ({
+        date,
+        condition: describeWeatherCode(data.daily.weather_code?.[index]),
+        high: data.daily.temperature_2m_max?.[index],
+        low: data.daily.temperature_2m_min?.[index],
+        rainfall: data.daily.precipitation_sum?.[index]
+      })),
+      alerts: []
+    };
+
+    if (weatherCache.size >= WEATHER_CACHE_MAX_ENTRIES) {
+      const oldestKey = weatherCache.keys().next().value;
+      if (oldestKey) weatherCache.delete(oldestKey);
+    }
+    weatherCache.set(cacheKey, { cachedAt: Date.now(), data: result });
+    return res.json(result);
+  } catch (error) {
+    console.error("Weather provider unavailable; serving labeled demo conditions:", error.message);
+    return res.json(demoWeather(lat, lng, true));
+  } finally {
+    clearTimeout(timeout);
+  }
 });
 
 // --- Triage scoring ---

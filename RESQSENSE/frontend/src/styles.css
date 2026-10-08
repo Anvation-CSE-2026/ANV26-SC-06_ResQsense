@@ -52,6 +52,41 @@
   --radius-full: 9999px;
 }
 
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-canvas: #000000;
+  --bg-surface: #0a0a0a;
+  --bg-subtle: #141414;
+  --bg-card-hover: #1c1c1c;
+  --border-light: #303030;
+  --border-subtle: #242424;
+  --border-focus: #34d399;
+  --text-main: #edf5f0;
+  --text-body: #d3e0d8;
+  --text-muted: #a3b6aa;
+  --text-subtle: #849b8e;
+  --primary: #34d399;
+  --primary-hover: #6ee7b7;
+  --primary-dark: #6ee7b7;
+  --primary-light: #123c31;
+  --primary-border: #23664f;
+  --primary-glow: rgba(52, 211, 153, 0.18);
+  --danger: #fb7185;
+  --danger-light: #3b1c2b;
+  --danger-border: #713449;
+  --warning: #fbbf24;
+  --warning-light: #382d19;
+  --warning-border: #705521;
+  --success: #34d399;
+  --success-light: #123c31;
+  --success-border: #23664f;
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.22);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 12px 28px rgba(0, 0, 0, 0.3);
+  --shadow-xl: 0 20px 36px rgba(0, 0, 0, 0.38);
+}
+
 * {
   box-sizing: border-box;
   margin: 0;
@@ -68,6 +103,82 @@ body {
   color: var(--text-main);
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+}
+
+html[data-theme="dark"] body {
+  background-image:
+    radial-gradient(at 0% 0%, rgba(16, 185, 129, 0.035) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(5, 150, 105, 0.025) 0px, transparent 50%);
+}
+
+html[data-theme="dark"] header.app-header {
+  background: rgba(10, 10, 10, 0.96);
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.2);
+}
+
+html[data-theme="dark"] .panel-header {
+  background: var(--bg-surface);
+}
+
+html[data-theme="dark"] .alert-item-card.critical {
+  background: var(--danger-light);
+}
+
+html[data-theme="dark"] .alert-item-card.warning {
+  background: var(--warning-light);
+}
+
+html[data-theme="dark"] .guideline-card:hover {
+  background: var(--bg-card-hover);
+}
+
+html[data-theme="dark"] .role-tab-btn.active,
+html[data-theme="dark"] .auth-role-btn.active {
+  background: var(--bg-card-hover);
+  color: #a7f3d0;
+  box-shadow: var(--shadow-xs);
+}
+
+html[data-theme="dark"] .avatar-circle {
+  border-color: #ffffff;
+}
+
+html[data-theme="dark"] .helpline-box {
+  background: linear-gradient(145deg, var(--bg-surface), var(--bg-subtle));
+}
+
+html[data-theme="dark"] .helpline-tag,
+html[data-theme="dark"] .auth-input,
+html[data-theme="dark"] .auth-container-card {
+  background: var(--bg-card-hover);
+  color: var(--text-main);
+}
+
+html[data-theme="dark"] .weather-card-box {
+  background: linear-gradient(135deg, #12372f, #172f2b);
+  border-color: #23664f;
+}
+
+html[data-theme="dark"] .weather-forecast {
+  background: var(--bg-surface);
+}
+
+html[data-theme="dark"] .auth-notice-box,
+html[data-theme="dark"] .auth-notice-box.supabase {
+  background: #12372f;
+  border-color: #23664f;
+  color: #a7f3d0;
+}
+
+html[data-theme="dark"] .auth-notice-box svg,
+html[data-theme="dark"] .auth-notice-box.supabase svg {
+  color: #6ee7b7;
+}
+
+html[data-theme="dark"] .leaflet-popup-content-wrapper,
+html[data-theme="dark"] .leaflet-popup-tip {
+  background: var(--bg-surface);
+  color: var(--text-main);
 }
 
 button {
@@ -166,7 +277,7 @@ header.app-header {
 }
 
 .role-tab-btn.active {
-  background: #ffffff;
+  background: var(--bg-surface);
   color: var(--primary-dark);
   box-shadow: 0 2px 8px rgba(12, 41, 27, 0.08);
   font-weight: 700;
@@ -177,6 +288,27 @@ header.app-header {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  color: var(--text-body);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.theme-toggle:hover {
+  background: var(--bg-subtle);
+  border-color: var(--primary-border);
+  color: var(--primary-dark);
 }
 
 .status-pill {
@@ -339,7 +471,7 @@ aside.app-sidebar {
 }
 
 .helpline-tag {
-  background: #ffffff;
+  background: var(--bg-surface);
   border: 1px solid var(--border-light);
   padding: 5px 8px;
   border-radius: 6px;
@@ -564,7 +696,7 @@ main.main-viewport {
   align-items: center;
   justify-content: space-between;
   border-bottom: 1px solid var(--border-light);
-  background: #ffffff;
+  background: var(--bg-surface);
 }
 
 .panel-title-group h3 {
@@ -624,7 +756,7 @@ main.main-viewport {
   position: absolute;
   bottom: 18px;
   left: 18px;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--bg-surface);
   backdrop-filter: blur(10px);
   border: 1px solid var(--border-light);
   padding: 10px 18px;
@@ -767,6 +899,73 @@ main.main-viewport {
   color: #047857;
 }
 
+.weather-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #d1fae5;
+  color: #64748b;
+  font-size: 10px;
+}
+
+.weather-source a {
+  color: #047857;
+  text-decoration: underline;
+}
+
+.weather-source-badge {
+  padding: 3px 6px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.weather-source-badge.live {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.weather-source-badge.demo {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.weather-forecast {
+  margin: -8px 18px 18px;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-surface);
+}
+
+.weather-forecast h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.forecast-row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border-light);
+  font-size: 11px;
+}
+
+.forecast-row span:last-of-type {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.forecast-row small {
+  grid-column: 2 / -1;
+  color: var(--text-muted);
+}
+
 /* Intelligence Alerts List */
 .alerts-list-group {
   padding: 0 18px 18px;
@@ -816,6 +1015,23 @@ main.main-viewport {
   grid-template-columns: repeat(3, 1fr);
   gap: 14px;
   padding: 20px;
+}
+
+.preparedness-items {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  padding: 20px;
+}
+
+.preparedness-item {
+  padding: 12px 14px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  background: var(--bg-card-hover);
+  color: var(--text-body);
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .guideline-card {
@@ -1034,7 +1250,7 @@ main.main-viewport {
   right: 28px;
   bottom: 28px;
   width: 360px;
-  background: #ffffff;
+  background: var(--bg-surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
@@ -1131,7 +1347,7 @@ main.main-viewport {
   color: var(--text-muted);
   border-top: 1px solid var(--border-light);
   padding: 10px 18px;
-  background: #f8fbf9;
+  background: var(--bg-surface);
 }
 
 .chat-result-view {
@@ -1307,7 +1523,7 @@ main.main-viewport {
   right: 24px;
   top: 92px;
   width: 340px;
-  background: #ffffff;
+  background: var(--bg-surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   padding: 24px;
@@ -1380,7 +1596,7 @@ main.main-viewport {
 .auth-container-card {
   width: 100%;
   max-width: 520px;
-  background: #ffffff;
+  background: var(--bg-surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-xl);
@@ -1460,7 +1676,7 @@ main.main-viewport {
 }
 
 .auth-role-btn.active {
-  background: #ffffff;
+  background: var(--bg-surface);
   color: var(--primary-dark);
   box-shadow: 0 2px 6px rgba(12, 41, 27, 0.08);
 }
@@ -1508,7 +1724,7 @@ main.main-viewport {
   font-family: inherit;
   font-size: 13.5px;
   color: var(--text-main);
-  background: #ffffff;
+  background: var(--bg-surface);
   outline: none;
   transition: all 0.15s ease;
 }
@@ -1621,7 +1837,7 @@ footer.app-footer {
   font-size: 12px;
   color: var(--text-subtle);
   border-top: 1px solid var(--border-light);
-  background: #ffffff;
+  background: var(--bg-surface);
 }
 
 /* =========================================
@@ -1675,6 +1891,9 @@ footer.app-footer {
     padding: 0 16px;
   }
   .brand-info small, .status-pill span {
+    display: none;
+  }
+  .theme-toggle span {
     display: none;
   }
   .app-layout {
@@ -1740,7 +1959,6 @@ footer.app-footer {
   flex-direction: column;
   gap: 12px;
 }
-
 /* ─── SOS Evidence Upload Zone ─────────────────────────────── */
 .sos-upload-zone {
   border: 2px dashed #cbd5e1;
@@ -2335,5 +2553,3 @@ footer.app-footer {
   padding: 8px 12px;
   border-radius: 6px;
 }
-
-

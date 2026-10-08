@@ -43,7 +43,9 @@ import {
   ImageIcon,
   Type,
   MessageSquare,
-  BellRing
+  BellRing,
+  Moon,
+  Sun
 } from "lucide-react";
 
 import "leaflet/dist/leaflet.css";
@@ -267,7 +269,7 @@ function LiveMap({ incidents, teams, center, onSelect, showTeams = true, filter 
   );
 }
 
-function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adminUser, onSignOut, onOpenTwilio, criticalCount }) {
+function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adminUser, onSignOut, onOpenTwilio, criticalCount, theme, setTheme }) {
   const toggleLocation = () => {
     if (gps) {
       setGps(null);
@@ -347,6 +349,16 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
             )}
           </button>
         )}
+
+        <button
+          className="theme-toggle"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+          title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
+        >
+          {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+          <span>{theme === "dark" ? "Light" : "Dark"}</span>
+        </button>
 
         <button
           className={`location-btn ${gps ? "active" : ""}`}
@@ -597,8 +609,15 @@ function Chatbot({ gps, onSOS, open, setOpen }) {
             <span>Question {step + 1} of {TOTAL_STEPS + 1}</span>
             <div style={{ display: "flex", gap: "4px" }}>
               {[0, 1, 2, 3, 4, 5].map(idx => (
-                <div key={idx} style={{ width: "8px", height: "8px", borderRadius: "50%",
-                  background: idx < step ? "#10b981" : idx === step ? "#3b82f6" : "#d1e7dd" }} />
+                <div
+                  key={idx}
+                  style={{
+                    width: "8px",
+                    height: "8px",
+                    borderRadius: "50%",
+                    background: idx <= step ? "var(--primary)" : "var(--bg-subtle)"
+                  }}
+                />
               ))}
             </div>
           </div>
@@ -689,7 +708,7 @@ function Chatbot({ gps, onSOS, open, setOpen }) {
           <div className="chat-result-view">
             <div className="chat-score-circle">{result.priority}<span>/100</span></div>
             <div className="chat-severity-pill">{result.severity} PRIORITY</div>
-            <p style={{ fontSize: "12px", color: "#64748b", marginBottom: "12px" }}>
+            <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>
               Assessment Confidence: <b>{result.confidence}%</b>
             </p>
             {result.reasons && (
@@ -731,22 +750,26 @@ function Chatbot({ gps, onSOS, open, setOpen }) {
 function CitizenDashboard({ active, setActive, incidents, teams, gps, setIncidents, onOpenChat, onSelectIncident }) {
   const [weather, setWeather] = useState(null);
   const [mapFilter, setMapFilter] = useState("ALL");
-  const [bagChecklist, setBagChecklist] = useState({
-    water: true,
-    firstAid: true,
-    flashlight: true,
-    radio: false,
-    medicines: false,
-    docs: false
-  });
 
   useEffect(() => {
     const lat = gps?.lat || demoCenter[0];
     const lng = gps?.lng || demoCenter[1];
-    fetch(`${API}/weather?lat=${lat}&lng=${lng}`)
-      .then(r => r.json())
+    const controller = new AbortController();
+
+    fetch(`${API}/weather?lat=${lat}&lng=${lng}`, { signal: controller.signal })
+      .then(response => {
+        if (!response.ok) throw new Error(`Weather request failed (${response.status})`);
+        return response.json();
+      })
       .then(setWeather)
-      .catch(() => {});
+      .catch(error => {
+        if (error.name !== "AbortError") {
+          console.error("Unable to load weather:", error);
+          setWeather(null);
+        }
+      });
+
+    return () => controller.abort();
   }, [gps]);
 
   const guidelines = [
@@ -793,16 +816,16 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
       <main className="main-viewport">
         <div className="page-header-row">
           <div>
-            <span className="page-eyebrow" style={{ color: "#e11d48" }}>Critical Life Safety</span>
+            <span className="page-eyebrow" style={{ color: "var(--danger)" }}>Critical Life Safety</span>
             <h2>Emergency SOS & Immediate Triage</h2>
             <p>Direct priority line to disaster response squads, ambulance dispatch, and NDRF force.</p>
           </div>
         </div>
 
-        <div className="panel-card" style={{ background: "linear-gradient(135deg, #fff1f2 0%, #ffe4e6 100%)", border: "1px solid #fecdd3", textAlign: "center", padding: "36px 20px", marginBottom: "20px" }}>
-          <ShieldAlert size={48} color="#e11d48" style={{ marginBottom: "12px" }} />
-          <h3 style={{ color: "#9f1239", fontSize: "22px", margin: "0 0 8px 0" }}>Are You or Someone Nearby in Immediate Danger?</h3>
-          <p style={{ color: "#be123c", maxWidth: "560px", margin: "0 auto 20px auto", fontSize: "14px" }}>
+        <div className="panel-card" style={{ background: "var(--danger-light)", border: "1px solid var(--danger-border)", textAlign: "center", padding: "36px 20px", marginBottom: "20px" }}>
+          <ShieldAlert size={48} color="var(--danger)" style={{ marginBottom: "12px" }} />
+          <h3 style={{ color: "var(--danger)", fontSize: "22px", margin: "0 0 8px 0" }}>Are You or Someone Nearby in Immediate Danger?</h3>
+          <p style={{ color: "var(--danger)", maxWidth: "560px", margin: "0 auto 20px auto", fontSize: "14px" }}>
             Upload a photo or describe your situation — we'll instantly transmit it to rescue teams and provide the nearest team contact number.
           </p>
           <button className="btn-sos" style={{ padding: "14px 32px", fontSize: "16px", borderRadius: "10px" }} onClick={onOpenChat}>
@@ -815,25 +838,25 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
             <h3>24/7 Immediate Emergency Helplines</h3>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "14px" }}>
-            <a href="tel:112" className="panel-card" style={{ textDecoration: "none", background: "#f8fafc", padding: "16px", border: "1px solid #e2e8f0" }}>
-              <div style={{ fontSize: "12px", color: "#64748b" }}>National Unified Emergency</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a" }}>112</div>
-              <small style={{ color: "#059669", fontWeight: "600" }}>Toll-Free • 24/7</small>
+            <a href="tel:112" className="panel-card" style={{ textDecoration: "none", background: "var(--bg-subtle)", padding: "16px", border: "1px solid var(--border-light)" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>National Unified Emergency</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--text-main)" }}>112</div>
+              <small style={{ color: "var(--primary-dark)", fontWeight: "600" }}>Toll-Free • 24/7</small>
             </a>
-            <a href="tel:1070" className="panel-card" style={{ textDecoration: "none", background: "#f8fafc", padding: "16px", border: "1px solid #e2e8f0" }}>
-              <div style={{ fontSize: "12px", color: "#64748b" }}>State Disaster Management</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a" }}>1070</div>
-              <small style={{ color: "#059669", fontWeight: "600" }}>Disaster Control Room</small>
+            <a href="tel:1070" className="panel-card" style={{ textDecoration: "none", background: "var(--bg-subtle)", padding: "16px", border: "1px solid var(--border-light)" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>State Disaster Management</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--text-main)" }}>1070</div>
+              <small style={{ color: "var(--primary-dark)", fontWeight: "600" }}>Disaster Control Room</small>
             </a>
-            <a href="tel:108" className="panel-card" style={{ textDecoration: "none", background: "#f8fafc", padding: "16px", border: "1px solid #e2e8f0" }}>
-              <div style={{ fontSize: "12px", color: "#64748b" }}>Emergency Ambulance</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a" }}>108</div>
-              <small style={{ color: "#059669", fontWeight: "600" }}>Medical Evacuation</small>
+            <a href="tel:108" className="panel-card" style={{ textDecoration: "none", background: "var(--bg-subtle)", padding: "16px", border: "1px solid var(--border-light)" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Emergency Ambulance</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--text-main)" }}>108</div>
+              <small style={{ color: "var(--primary-dark)", fontWeight: "600" }}>Medical Evacuation</small>
             </a>
-            <a href="tel:101" className="panel-card" style={{ textDecoration: "none", background: "#f8fafc", padding: "16px", border: "1px solid #e2e8f0" }}>
-              <div style={{ fontSize: "12px", color: "#64748b" }}>Fire & Rescue Services</div>
-              <div style={{ fontSize: "24px", fontWeight: "800", color: "#0f172a" }}>101</div>
-              <small style={{ color: "#059669", fontWeight: "600" }}>Fire Rescue</small>
+            <a href="tel:101" className="panel-card" style={{ textDecoration: "none", background: "var(--bg-subtle)", padding: "16px", border: "1px solid var(--border-light)" }}>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Fire & Rescue Services</div>
+              <div style={{ fontSize: "24px", fontWeight: "800", color: "var(--text-main)" }}>101</div>
+              <small style={{ color: "var(--primary-dark)", fontWeight: "600" }}>Fire Rescue</small>
             </a>
           </div>
         </div>
@@ -884,7 +907,7 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
                     <td>{inc.people || 1} people</td>
                     <td><span className="status-badge verified">{inc.status}</span></td>
                     <td>
-                      <span style={{ color: inc.assignedTeam ? "#059669" : "#64748b", fontWeight: "600" }}>
+                      <span style={{ color: inc.assignedTeam ? "var(--success)" : "var(--text-muted)", fontWeight: "600" }}>
                         {inc.assignedTeam ? `Team ${inc.assignedTeam}` : "Triage in progress"}
                       </span>
                     </td>
@@ -928,9 +951,9 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
                 </div>
               </div>
             )}
-            <div style={{ marginTop: "16px", padding: "12px", background: "#f8fafc", borderRadius: "8px" }}>
-              <div style={{ fontSize: "13px", fontWeight: "700", color: "#1e293b", marginBottom: "4px" }}>River Drainage Ingress</div>
-              <div style={{ fontSize: "12px", color: "#64748b" }}>Hooghly water surge level measured at +1.8m above mean seasonal threshold.</div>
+            <div style={{ marginTop: "16px", padding: "12px", background: "var(--bg-subtle)", borderRadius: "8px" }}>
+              <div style={{ fontSize: "13px", fontWeight: "700", color: "var(--text-main)", marginBottom: "4px" }}>River Drainage Ingress</div>
+              <div style={{ fontSize: "12px", color: "var(--text-muted)" }}>Hooghly water surge level measured at +1.8m above mean seasonal threshold.</div>
             </div>
           </div>
 
@@ -973,32 +996,24 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
           <div>
             <span className="page-eyebrow">Civilian Defense & Preparedness</span>
             <h2>Disaster Preparedness & Survival Manual</h2>
-            <p>Interactive checklists, survival guidelines, and household safety protocols.</p>
+            <p>Essential survival guidelines, household safety protocols, and emergency supply recommendations.</p>
           </div>
         </div>
 
-        <div className="panel-card" style={{ marginBottom: "20px" }}>
+        <div className="panel-card">
           <div className="panel-header">
-            <h3>🎒 72-Hour Emergency Grab-Bag Checklist</h3>
-            <span style={{ fontSize: "12px", color: "#64748b" }}>Tick items to verify readiness</span>
+            <h3>🎒 72-Hour Emergency Grab-Bag Essentials</h3>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "12px", padding: "10px 0" }}>
+          <div className="preparedness-items">
             {[
-              { id: "water", label: "Clean Drinking Water (3L per person/day)" },
-              { id: "firstAid", label: "Trauma Bandages & Antiseptics" },
-              { id: "flashlight", label: "High-Beam Waterproof Flashlight & Batteries" },
-              { id: "radio", label: "Portable Battery/Solar Emergency Radio" },
-              { id: "medicines", label: "Essential Prescription Medicines (7-day supply)" },
-              { id: "docs", label: "Waterproof Pouch with IDs & Emergency Cash" }
+              "Clean Drinking Water (3L per person/day)",
+              "Trauma Bandages & Antiseptics",
+              "High-Beam Waterproof Flashlight & Batteries",
+              "Portable Battery/Solar Emergency Radio",
+              "Essential Prescription Medicines (7-day supply)",
+              "Waterproof Pouch with IDs & Emergency Cash"
             ].map(item => (
-              <label key={item.id} style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px", background: "#f8fafc", borderRadius: "8px", cursor: "pointer", border: "1px solid #e2e8f0" }}>
-                <input
-                  type="checkbox"
-                  checked={!!bagChecklist[item.id]}
-                  onChange={e => setBagChecklist({ ...bagChecklist, [item.id]: e.target.checked })}
-                />
-                <span style={{ fontSize: "13px", fontWeight: "600", color: "#1e293b" }}>{item.label}</span>
-              </label>
+              <div className="preparedness-item" key={item}>{item}</div>
             ))}
           </div>
         </div>
@@ -1041,7 +1056,7 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
         <StatCard label="Active Regional Alerts" value="03" icon={<Bell size={22} />} variant="rose" trend="High Alert Active" />
         <StatCard label="Verified Rescue Teams" value={teams.length ? `0${teams.length}` : "04"} icon={<Truck size={22} />} variant="green" trend="In Sector Standby" />
         <StatCard label="Response Personnel" value="36" icon={<Users size={22} />} variant="emerald" trend="Deployed & Ready" />
-        <StatCard label="Weather Readiness" value={weather ? `${weather.current.temperature}°C` : "29°C"} icon={<CloudRain size={22} />} variant="amber" trend="Monsoon Advisory" />
+        <StatCard label="Weather Readiness" value={weather ? `${weather.current.temperature}°C` : "—"} icon={<CloudRain size={22} />} variant="amber" trend={weather?.mode === "LIVE" ? "Live weather" : "Weather data"} />
       </div>
 
       <div className="dashboard-grid-2-1">
@@ -1085,7 +1100,7 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
           <div className="panel-header">
             <div className="panel-title-group">
               <h3>Local Meteorological Intel</h3>
-              <p>Localized conditions and warnings</p>
+              <p>Local forecast • Check official sources for warnings</p>
             </div>
           </div>
 
@@ -1100,27 +1115,51 @@ function CitizenDashboard({ active, setActive, incidents, teams, gps, setInciden
                 <span>Wind: <b>{weather.current.wind} km/h</b></span>
                 <span>Humidity: <b>{weather.current.humidity}%</b></span>
               </div>
+              <div className="weather-source">
+                <span className={`weather-source-badge ${weather.mode === "LIVE" ? "live" : "demo"}`}>
+                  {weather.mode === "LIVE" ? "LIVE" : "DEMO FALLBACK"}
+                </span>
+                {weather.mode === "LIVE" ? (
+                  <a href={weather.sourceUrl} target="_blank" rel="noreferrer">Weather data: Open-Meteo</a>
+                ) : (
+                  <span>Sample conditions — not live weather</span>
+                )}
+                <span>Updated {new Date(weather.updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+              </div>
+            </div>
+          )}
+          {weather?.daily?.length > 0 && (
+            <div className="weather-forecast">
+              <h4>3-day forecast</h4>
+              {weather.daily.map(day => (
+                <div className="forecast-row" key={day.date}>
+                  <span>{new Date(`${day.date}T12:00:00`).toLocaleDateString([], { weekday: "short" })}</span>
+                  <span>{day.condition}</span>
+                  <span>{Math.round(day.high)}° / {Math.round(day.low)}°</span>
+                  <small>{day.rainfall} mm rain</small>
+                </div>
+              ))}
             </div>
           )}
 
           <div className="alerts-list-group">
             <div className="alert-item-card critical">
               <div className="alert-item-title">
-                <span>Critical Flood Warning</span>
-                <span className="priority-tag high">Priority 92</span>
+                <span>Demo incident scenario</span>
+                <span className="priority-tag medium">Demo</span>
               </div>
               <p className="alert-item-body">
-                Heavy waterlogging reported in low-lying riverside corridors. Relief boats deployed in Sector 4.
+                Sample flood incident shown for demonstration; this is not a live alert.
               </p>
             </div>
 
             <div className="alert-item-card warning">
               <div className="alert-item-title">
-                <span>Rainfall Flash Advisory</span>
-                <span className="priority-tag medium">Caution</span>
+                <span>Weather safety note</span>
+                <span className="priority-tag medium">Forecast only</span>
               </div>
               <p className="alert-item-body">
-                Anticipated precipitation rate exceeding 25mm/hr. Residents in basements should seek ground elevations.
+                Open-Meteo forecasts are not official emergency warnings. Follow advisories from the India Meteorological Department.
               </p>
             </div>
           </div>
@@ -1646,13 +1685,16 @@ function IncidentDetailDrawer({ incident, onClose, teams, onAssignTeam }) {
     <div className="detail-drawer">
       <div className="drawer-header">
         <h3>Incident {incident.id}</h3>
-        <button onClick={onClose} style={{ background: "#f1f5f9", padding: "6px", borderRadius: "50%" }}>
+        <button
+          onClick={onClose}
+          style={{ background: "var(--bg-subtle)", padding: "6px", borderRadius: "50%" }}
+        >
           <X size={16} />
         </button>
       </div>
 
       <div className="drawer-priority-badge">
-        {incident.priority} <span style={{ fontSize: "14px", color: "#64748b" }}>/ 100</span>
+        {incident.priority} <span style={{ fontSize: "14px", color: "var(--text-muted)" }}>/ 100</span>
       </div>
 
       <div className="drawer-info-grid">
@@ -1706,7 +1748,7 @@ function IncidentDetailDrawer({ incident, onClose, teams, onAssignTeam }) {
       )}
 
       {incident.assignedTeam && (
-        <div style={{ background: "#ecfdf5", border: "1px solid #a7f3d0", padding: "10px", borderRadius: "8px", marginBottom: "14px", fontSize: "12px", color: "#065f46" }}>
+        <div style={{ background: "var(--success-light)", border: "1px solid var(--success-border)", padding: "10px", borderRadius: "8px", marginBottom: "14px", fontSize: "12px", color: "var(--success)" }}>
           ✓ Assigned to Team <b>{incident.assignedTeam}</b>
         </div>
       )}
@@ -1715,7 +1757,7 @@ function IncidentDetailDrawer({ incident, onClose, teams, onAssignTeam }) {
         <div>
           <button
             className="btn-chat-primary"
-            style={{ background: "#059669" }}
+            style={{ background: "var(--success)" }}
             onClick={() => onAssignTeam(incident.id, teams[0].id)}
           >
             Deploy Nearest Unit ({teams[0].name})
@@ -2446,6 +2488,14 @@ function SOSDirectModal({ open, onClose, gps, teams, onSubmit }) {
 
 function App() {
   const [role, setRole] = useState("citizen");
+  const [theme, setTheme] = useState(() => {
+    try {
+      return localStorage.getItem("resqsense_theme") === "dark" ? "dark" : "light";
+    } catch (error) {
+      console.warn("Unable to read saved theme preference:", error);
+      return "light";
+    }
+  });
   const [rescueUser, setRescueUser] = useState(() => {
     try {
       const s = localStorage.getItem("resqsense_rescue_user");
@@ -2472,6 +2522,15 @@ function App() {
   const [selectedIncident, setSelectedIncident] = useState(null);
   const [twilioModalOpen, setTwilioModalOpen] = useState(false);
 
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    try {
+      localStorage.setItem("resqsense_theme", theme);
+    } catch (error) {
+      console.warn("Unable to save theme preference:", error);
+    }
+  }, [theme]);
 
   // ── Supabase: Restore session on app load ────────────────────────────────
   useEffect(() => {
@@ -2646,6 +2705,8 @@ function App() {
         onSignOut={handleSignOut}
         onOpenTwilio={() => setTwilioModalOpen(true)}
         criticalCount={incidents.filter(i => i.priority >= 80).length}
+        theme={theme}
+        setTheme={setTheme}
       />
 
       {/* Citizen View: Free and open to everyone without login */}
