@@ -360,7 +360,7 @@ app.delete("/api/incidents/:id", async (req, res) => {
 // ──────────────────────────────────────────────
 // TWILIO SANDBOX EMERGENCY DISPATCH ROUTE
 // ──────────────────────────────────────────────
-app.post("/api/twilio/broadcast", async (req, res) => {
+app.post(["/api/twilio/broadcast", "/api/twilio/dispatch"], async (req, res) => {
   const {
     incidentId,
     incidentType,
