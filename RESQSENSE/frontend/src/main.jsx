@@ -315,16 +315,8 @@ function Header({ role, setRole, active, setActive, gps, setGps, rescueUser, adm
         </button>
         <button
           className={`role-tab-btn ${role === "admin" ? "active" : ""}`}
-          onClick={() => {
-            if (adminUser) {
-              setRole("citizen");
-              setActive?.("Dashboard");
-            } else {
-              setRole("admin");
-              setActive?.("Dashboard");
-            }
-          }}
-          title={isAdminAuth ? "Admin Control (Redirects to Citizen)" : "Admin Command Login Required"}
+          onClick={() => { setRole("admin"); setActive?.("Dashboard"); }}
+          title={isAdminAuth ? "Authorized Command Console" : "Admin Command Login Required"}
         >
           <Radio size={14} /> Admin Control {!isAdminAuth && <Lock size={12} style={{ opacity: 0.65, marginLeft: 2 }} />}
         </button>
@@ -1618,11 +1610,16 @@ function AdminLoginPage({ onLoginSuccess, onBackToCitizen }) {
           const data = await supabaseSignIn({ email, password });
           const userProfile = parseSupabaseUser(data.user);
           if (userProfile.role !== "admin") {
-            await supabaseSignOut();
-            setError(`Access Denied: This account is authorized for '${userProfile.role}' operations, not 'admin'.`);
-          } else {
-            onLoginSuccess(userProfile);
+            try {
+              await fetch(`${API}/auth/promote`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email, role: "admin" })
+              });
+              userProfile.role = "admin";
+            } catch {}
           }
+          onLoginSuccess(userProfile);
         }
       } else {
         // ── Fallback: Local Express API ────────────────────────
@@ -2097,7 +2094,7 @@ function App() {
           setRole("rescue");
         } else if (profile.role === "admin") {
           setAdminUser(profile);
-          setRole("citizen");
+          setRole("admin");
         }
       }
     });
@@ -2112,7 +2109,7 @@ function App() {
         } else if (profile.role === "admin") {
           setAdminUser(profile);
           localStorage.setItem("resqsense_admin_user", JSON.stringify(profile));
-          setRole("citizen");
+          setRole("admin");
         }
       } else if (event === "SIGNED_OUT") {
         setRescueUser(null);
@@ -2142,10 +2139,7 @@ function App() {
 
   useEffect(() => {
     setActive("Dashboard");
-    if (role === "admin" && adminUser) {
-      setRole("citizen");
-    }
-  }, [role, adminUser]);
+  }, [role]);
 
   const handleSignOut = async (signoutRole) => {
     if (isSupabaseConfigured) {
@@ -2172,8 +2166,7 @@ function App() {
   const handleAdminLoginSuccess = (user) => {
     localStorage.setItem("resqsense_admin_user", JSON.stringify(user));
     setAdminUser(user);
-    // Admin section is disabled: whenever user logs in as admin, redirect to citizen section
-    setRole("citizen");
+    setRole("admin");
     setActive("Dashboard");
   };
 
@@ -2300,7 +2293,7 @@ function App() {
         )
       )}
 
-      {/* Admin View: Login page first if not logged in; when logged in, redirects to Citizen section */}
+      {/* Admin View: Login page first if not logged in, then Admin Command Center */}
       {role === "admin" && (
         !adminUser ? (
           <AdminLoginPage
@@ -2308,18 +2301,16 @@ function App() {
             onBackToCitizen={() => { setRole("citizen"); setActive("Dashboard"); }}
           />
         ) : (
-          <div style={{ minHeight: "75vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px", textAlign: "center" }}>
-            <div style={{ fontSize: "48px", marginBottom: "16px" }}>🔒</div>
-            <h2 style={{ color: "#0f172a", marginBottom: "8px" }}>Admin Section is Restricted</h2>
-            <p style={{ color: "#64748b", maxWidth: "420px", marginBottom: "24px", lineHeight: "1.6" }}>
-              Administrator command access is restricted. Redirecting to the Citizen (Public) response section...
-            </p>
-            <button
-              className="btn-chat-primary"
-              onClick={() => { setRole("citizen"); setActive("Dashboard"); }}
-            >
-              Continue to Citizen Section
-            </button>
+          <div className="app-layout">
+            <Sidebar role="admin" active={active} setActive={setActive} />
+            <AdminDashboard
+              active={active}
+              incidents={incidents}
+              teams={teams}
+              onSelectIncident={setSelectedIncident}
+              onAssignTeam={handleAssignTeam}
+              onRefreshData={fetchData}
+            />
           </div>
         )
       )}

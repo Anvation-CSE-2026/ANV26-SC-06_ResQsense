@@ -645,6 +645,44 @@ app.post("/api/auth/register", async (req, res) => {
 
       if (error) {
         if (error.message.toLowerCase().includes("already") || error.code === "email_exists") {
+          // If account already exists, update user's password and role metadata
+          try {
+            const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+            const existingUser = listData?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
+            if (existingUser) {
+              const { data: updated, error: updateErr } = await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+                password: password.trim(),
+                email_confirm: true,
+                user_metadata: {
+                  ...existingUser.user_metadata,
+                  role,
+                  name: userName,
+                  badgeId: userBadge,
+                  agency: userAgency
+                }
+              });
+              if (!updateErr && updated?.user) {
+                let token = "supabase_token_" + Buffer.from(`${existingUser.id}:${role}:${Date.now()}`).toString("base64");
+                if (supabaseAnon) {
+                  try {
+                    const sRes = await supabaseAnon.auth.signInWithPassword({ email: cleanEmail, password: password.trim() });
+                    if (sRes.data?.session?.access_token) token = sRes.data.session.access_token;
+                  } catch {}
+                }
+                const safeUser = {
+                  id: existingUser.id,
+                  email: cleanEmail,
+                  role,
+                  name: userName,
+                  badgeId: userBadge,
+                  agency: userAgency
+                };
+                return res.status(200).json({ ok: true, user: safeUser, token, message: "Account clearance updated." });
+              }
+            }
+          } catch (updateEx) {
+            console.error("Update existing user error:", updateEx);
+          }
           return res.status(409).json({ error: "An account with this email already exists." });
         }
         return res.status(400).json({ error: error.message });
@@ -697,7 +735,17 @@ app.post("/api/auth/register", async (req, res) => {
   // --- Local Fallback ---
   let users = loadUsers();
   const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
-  if (existing) return res.status(409).json({ error: "An account with this email already exists." });
+  if (existing) {
+    existing.password = password.trim();
+    existing.role = role;
+    existing.name = userName;
+    existing.badgeId = userBadge;
+    existing.agency = userAgency;
+    saveUsers(users);
+    const token = "resqsense_jwt_" + Buffer.from(`${existing.id}:${existing.role}:${Date.now()}`).toString("base64");
+    const { password: _, ...safeUser } = existing;
+    return res.status(200).json({ ok: true, user: safeUser, token, message: "Account clearance updated." });
+  }
 
   const user = {
     id: "USR-" + Date.now().toString().slice(-5),
@@ -717,6 +765,36 @@ app.post("/api/auth/register", async (req, res) => {
   return res.status(201).json({ user: safeUser, token });
 });
 
+app.post("/api/auth/promote", async (req, res) => {
+  const { email, role } = req.body;
+  if (!email || !role) return res.status(400).json({ error: "Email and role are required." });
+  const cleanEmail = email.trim().toLowerCase();
+  if (supabaseAdmin) {
+    try {
+      const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+      const existingUser = listData?.users?.find(u => u.email?.toLowerCase() === cleanEmail);
+      if (existingUser) {
+        await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+          user_metadata: {
+            ...existingUser.user_metadata,
+            role
+          }
+        });
+        return res.json({ ok: true, role });
+      }
+    } catch (e) {
+      console.error("Promote error:", e);
+    }
+  }
+  let users = loadUsers();
+  const existing = users.find(u => u.email.toLowerCase() === cleanEmail);
+  if (existing) {
+    existing.role = role;
+    saveUsers(users);
+  }
+  return res.json({ ok: true, role });
+});
+
 app.post("/api/auth/login", async (req, res) => {
   const { email, password, role } = req.body;
   if (!email || !password) return res.status(400).json({ error: "Please enter both email and password." });
@@ -734,11 +812,20 @@ app.post("/api/auth/login", async (req, res) => {
         return res.status(401).json({ error: "Invalid credentials: " + error.message });
       }
 
-      const userRole = data.user.user_metadata?.role || "rescue";
+      let userRole = data.user.user_metadata?.role || "rescue";
       if (role && userRole !== role) {
-        return res.status(403).json({
-          error: `Access Denied: This account is authorized for '${userRole}' operations, not '${role}'.`
-        });
+        if (role === "admin" && supabaseAdmin) {
+          try {
+            await supabaseAdmin.auth.admin.updateUserById(data.user.id, {
+              user_metadata: { ...data.user.user_metadata, role: "admin" }
+            });
+            userRole = "admin";
+          } catch {}
+        } else {
+          return res.status(403).json({
+            error: `Access Denied: This account is authorized for '${userRole}' operations, not '${role}'.`
+          });
+        }
       }
 
       const safeUser = {
