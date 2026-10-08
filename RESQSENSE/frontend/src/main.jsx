@@ -66,7 +66,8 @@ import {
   ControlMapDashboard,
   ResourceAllocationDashboard,
   RescueTeamsDashboard,
-  EmergencyAnalyticsDashboard
+  EmergencyAnalyticsDashboard,
+  EmergencyAlertsDashboard
 } from "./dashboards.jsx";
 
 const API = import.meta.env.VITE_API_URL || "/api";
@@ -371,7 +372,7 @@ function Header({
               <MessageSquare size={16} />
               {criticalCount > 0 && <span className="pulse-ping"></span>}
             </span>
-            <span className="admin-twilio-label">🚨 Dispatch</span>
+            <span className="admin-twilio-label">🚨 Emergency Alerts</span>
             {criticalCount > 0 && (
               <span className="admin-twilio-pill">{criticalCount} Alert{criticalCount !== 1 ? "s" : ""}</span>
             )}
@@ -449,11 +450,11 @@ function Sidebar({ role, active, setActive, onOpenTwilio, mobileMenuOpen, setMob
   const adminItems = [
     { label: "Dashboard", icon: <Activity size={18} /> },
     { label: "Incident Queue", icon: <ShieldAlert size={18} /> },
-    { label: "🚨 Twilio Dispatch", icon: <MessageSquare size={18} />, action: onOpenTwilio },
+    { label: "🚨 Emergency Alerts", icon: <Radio size={18} /> },
     { label: "Control Map", icon: <MapIcon size={18} /> },
     { label: "Resource Allocation", icon: <Package size={18} /> },
     { label: "Rescue Teams", icon: <Truck size={18} /> },
-    { label: "Emergency Analytics", icon: <Radio size={18} /> }
+    { label: "Emergency Analytics", icon: <Activity size={18} /> }
   ];
 
   const navItems = role === "citizen" ? citizenItems : role === "rescue" ? rescueItems : adminItems;
@@ -1298,7 +1299,7 @@ function RescueDashboard({ active, incidents, teams, onSelectIncident, onAssignT
   );
 }
 
-function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident, onAssignTeam, onRefreshData }) {
+function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident, onAssignTeam, onRefreshData, onOpenTwilio }) {
   const pendingCount = teams.filter(t => t.verified === false || t.status === "PENDING_VERIFICATION").length;
 
   if (active === "Incident Queue") {
@@ -1309,6 +1310,15 @@ function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident,
         onSelectIncident={onSelectIncident}
         onAssignTeam={onAssignTeam}
         onRefresh={onRefreshData}
+      />
+    );
+  }
+  if (active === "🚨 Emergency Alerts" || active === "Emergency Alerts" || active === "Twilio Dispatch" || active === "🚨 Twilio Dispatch") {
+    return (
+      <EmergencyAlertsDashboard
+        incidents={incidents}
+        teams={teams}
+        onOpenTwilio={onOpenTwilio}
       />
     );
   }
@@ -1398,6 +1408,7 @@ function AdminDashboard({ active, setActive, incidents, teams, onSelectIncident,
         onRefresh={onRefreshData}
         LiveMapComponent={LiveMap}
         demoCenter={demoCenter}
+        onOpenTwilio={onOpenTwilio}
       />
     </>
   );
@@ -2941,6 +2952,7 @@ function App() {
               onSelectIncident={setSelectedIncident}
               onAssignTeam={handleAssignTeam}
               onRefreshData={fetchData}
+              onOpenTwilio={() => setTwilioModalOpen(true)}
             />
           </div>
         )
