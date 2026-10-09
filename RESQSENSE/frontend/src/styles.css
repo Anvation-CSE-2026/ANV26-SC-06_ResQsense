@@ -1356,6 +1356,175 @@ main.main-viewport {
 }
 
 /* =========================================
+   RESOURCE ALLOCATION CARDS GRID
+   ========================================= */
+.resource-alloc-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+  align-items: stretch;
+}
+
+.resource-alloc-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+.resource-alloc-card-top {
+  flex: 1;
+  min-width: 0;
+}
+
+.resource-alloc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.resource-alloc-category {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-alloc-name {
+  margin: 0 0 5px 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.resource-alloc-depot {
+  font-size: 11.5px;
+  color: #64748b;
+  margin: 0 0 12px 0;
+  word-break: break-word;
+}
+
+.resource-alloc-counts {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 7px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.resource-alloc-counts span {
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* =========================================
+   ANALYTICS DISTRIBUTION BAR ROWS
+   ========================================= */
+.dist-bar-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 5px;
+  min-width: 0;
+}
+
+.dist-bar-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dist-bar-value {
+  flex-shrink: 0;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+/* =========================================
+   NAVIGATION LOG STEP BOXES
+   ========================================= */
+.nav-step-box {
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-subtle);
+  box-sizing: border-box;
+}
+
+.nav-step-box.hazard {
+  background: #fff1f2;
+  border-color: #fecdd3;
+}
+
+.nav-step-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.nav-step-title {
+  font-weight: 700;
+  color: var(--text-main);
+  flex: 1;
+  min-width: 0;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.nav-step-title.hazard {
+  color: #b91c1c;
+}
+
+.nav-step-km {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--primary-dark);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.nav-step-instruction {
+  color: var(--text-body);
+  line-height: 1.45;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+
+.nav-step-route {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+/* =========================================
    EMERGENCY ASSISTANT CHATBOT (Light Green & White Card)
    ========================================= */
 .chatbot-panel-wrapper {

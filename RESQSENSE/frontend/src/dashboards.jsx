@@ -926,32 +926,32 @@ export function ResourceAllocationDashboard({ incidents, teams }) {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 280px), 1fr))", gap: "16px", marginBottom: "24px" }}>
+      <div className="resource-alloc-grid">
         {filtered.map(res => {
           const pct = Math.round((res.deployed / res.total) * 100);
           return (
-            <div key={res.id} className="panel-card" style={{ display: "flex", flexDirection: "column", justifyContent: "space-between", margin: 0 }}>
-              <div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
-                  <span style={{ fontSize: "11px", fontWeight: "700", color: "#64748b", textTransform: "uppercase" }}>{res.category}</span>
-                  <span className={`priority-tag ${res.status === "CRITICAL" ? "high" : res.status === "HIGH_DEMAND" ? "medium" : "low"}`}>
+            <div key={res.id} className="resource-alloc-card">
+              <div className="resource-alloc-card-top">
+                <div className="resource-alloc-header">
+                  <span className="resource-alloc-category">{res.category}</span>
+                  <span className={`priority-tag ${res.status === "CRITICAL" ? "high" : res.status === "HIGH_DEMAND" ? "medium" : "low"}`} style={{ flexShrink: 0 }}>
                     {res.status}
                   </span>
                 </div>
-                <h4 style={{ margin: "0 0 6px 0", color: "#0f172a" }}>{res.name}</h4>
-                <p style={{ fontSize: "12px", color: "#64748b", margin: "0 0 12px 0" }}>Depot: {res.depot}</p>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: "600", marginBottom: "6px" }}>
+                <h4 className="resource-alloc-name">{res.name}</h4>
+                <p className="resource-alloc-depot">Depot: {res.depot}</p>
+                <div className="resource-alloc-counts">
                   <span>Available: <b style={{ color: "#059669" }}>{res.available}</b> {res.unit}</span>
                   <span>Deployed: {res.deployed} / {res.total}</span>
                 </div>
-                <div className="progress-track" style={{ height: "8px" }}>
+                <div className="progress-track">
                   <div className={`progress-fill ${pct > 80 ? "danger" : pct > 60 ? "warning" : ""}`} style={{ width: `${pct}%` }}></div>
                 </div>
               </div>
 
               <button
                 className="btn-chat-primary"
-                style={{ marginTop: "16px", width: "100%", fontSize: "13px" }}
+                style={{ marginTop: "14px", width: "100%", fontSize: "13px" }}
                 onClick={() => {
                   setAllocateModalItem(res);
                   setAllocQty(1);
@@ -1522,7 +1522,7 @@ Confidential Emergency Document • ResQSense Command Protocol`;
           <div className="panel-header">
             <h3>Disaster Type Distribution</h3>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "14px", padding: "10px 0" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px", padding: "12px 16px 16px" }}>
             {(analytics?.hazardDistribution || [
               { type: "Flood", percentage: 45, count: 18 },
               { type: "Landslide", percentage: 20, count: 8 },
@@ -1531,9 +1531,9 @@ Confidential Emergency Document • ResQSense Command Protocol`;
               { type: "Fire", percentage: 8, count: 3 }
             ]).map(item => (
               <div key={item.type}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>
-                  <span>{item.type}</span>
-                  <span>{item.percentage}% ({item.count} reports)</span>
+                <div className="dist-bar-row">
+                  <span className="dist-bar-label">{item.type}</span>
+                  <span className="dist-bar-value">{item.percentage}% ({item.count} reports)</span>
                 </div>
                 <div className="progress-track">
                   <div className="progress-fill" style={{ width: `${item.percentage}%` }}></div>
@@ -1547,7 +1547,7 @@ Confidential Emergency Document • ResQSense Command Protocol`;
           <div className="panel-header">
             <h3>Priority Severity Tier Breakdown</h3>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "14px", padding: "10px 0" }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px", padding: "12px 16px 16px" }}>
             {(analytics?.priorityBreakdown || [
               { label: "Critical Urgency (80-100)", count: 3, color: "#ef4444" },
               { label: "High Urgency (60-79)", count: 4, color: "#f59e0b" },
@@ -1555,9 +1555,9 @@ Confidential Emergency Document • ResQSense Command Protocol`;
               { label: "Low Urgency (<30)", count: 2, color: "#10b981" }
             ]).map(p => (
               <div key={p.label}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "13px", fontWeight: "600", marginBottom: "4px" }}>
-                  <span style={{ color: p.color }}>{p.label}</span>
-                  <span><b>{p.count}</b> incidents</span>
+                <div className="dist-bar-row">
+                  <span className="dist-bar-label" style={{ color: p.color }}>{p.label}</span>
+                  <span className="dist-bar-value"><b>{p.count}</b> incidents</span>
                 </div>
                 <div className="progress-track">
                   <div className="progress-fill" style={{ width: `${Math.max(15, (p.count / (incidents.length || 1)) * 100)}%`, background: p.color }}></div>
@@ -2804,28 +2804,16 @@ export function DijkstraNavigationDashboard({
               optimal.steps.map(step => (
                 <div
                   key={step.stepNumber}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: "8px",
-                    background: step.nearHazard ? "#fff1f2" : "var(--bg-subtle)",
-                    border: `1px solid ${step.nearHazard ? "#fecdd3" : "var(--border-light)"}`,
-                    fontSize: "12px"
-                  }}
+                  className={`nav-step-box${step.nearHazard ? " hazard" : ""}`}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                    <span style={{ fontWeight: "700", color: step.nearHazard ? "#b91c1c" : "var(--text-main)" }}>
+                  <div className="nav-step-header">
+                    <span className={`nav-step-title${step.nearHazard ? " hazard" : ""}`}>
                       Step {step.stepNumber} • {step.roadType}
                     </span>
-                    <span style={{ fontSize: "11px", fontWeight: "700", color: "var(--primary-dark)" }}>
-                      {step.distanceKm} km
-                    </span>
+                    <span className="nav-step-km">{step.distanceKm} km</span>
                   </div>
-                  <div style={{ color: "var(--text-body)", lineHeight: "1.4" }}>
-                    {step.instruction}
-                  </div>
-                  <div style={{ fontSize: "10.5px", color: "var(--text-muted)", marginTop: "4px" }}>
-                    Route: <b>{step.roadName}</b>
-                  </div>
+                  <div className="nav-step-instruction">{step.instruction}</div>
+                  <div className="nav-step-route">Route: <b>{step.roadName}</b></div>
                 </div>
               ))
             ) : (
