@@ -354,7 +354,7 @@ If you need to change it, use:
 git remote set-url origin https://github.com/Anvation-CSE-2026/ANV26-SC-06_ResQsense.git
 ```
 
-**Note:** If the remote repository already contains commits, pull or clone it first to avoid overwriting or creating unrelated Git histories.
+
 
 ---
 
@@ -364,9 +364,6 @@ Add the license selected by the project maintainers. Until one is specified, the
 
 ---
 
-## ⚠️ Disclaimer
-
-RESQSENSE is intended to support disaster awareness, incident reporting, and rescue coordination. It is not a replacement for official emergency services, verified government warnings, or professional emergency response. In an actual emergency, contact the appropriate local emergency services and follow official instructions.
 
 ---
 
