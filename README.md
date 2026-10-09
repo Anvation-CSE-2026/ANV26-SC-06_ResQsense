@@ -1,8 +1,6 @@
 # RESQSENSE — Smart Disaster Management & Response Platform
 
-**Bridging the gap between people and rescue teams during natural disasters.**
 
-[🌐 Live Demo](https://res-qsense-mu.vercel.app/) _https://github.com/Anvation-CSE-2026/ANV26-SC-06_ResQsense.git
 
 ---
 
